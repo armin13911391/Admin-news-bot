@@ -9,11 +9,17 @@ import requests
 
 from config import CATEGORY_FEEDS, MAX_NEWS_AGE_SECONDS, RSS_CACHE_SECONDS
 
+try:
+    from config import FALLBACK_NEWS_AGE_SECONDS
+except Exception:
+    FALLBACK_NEWS_AGE_SECONDS = 3 * 60 * 60
+
 
 _CACHE = {"key": None, "at": 0, "items": []}
 _DEAD_FEEDS = {}
-DEAD_FOR = 900
-HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.3"}
+DEAD_FOR = 600
+HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.4"}
+_EMPTY_LOG_AT = 0
 
 
 def extract_image(entry):
@@ -61,7 +67,11 @@ def entry_published(entry, fallback=0):
         if not raw:
             continue
         try:
-            stamp = int(parsedate_to_datetime(raw).timestamp())
+            dt = parsedate_to_datetime(raw)
+            if dt.tzinfo is None:
+                stamp = int(dt.timestamp()) - 3 * 3600 - 1800
+            else:
+                stamp = int(dt.timestamp())
             if stamp:
                 return stamp
         except Exception:
@@ -69,14 +79,14 @@ def entry_published(entry, fallback=0):
     return fallback
 
 
-def is_fresh(news, now=None):
+def is_fresh(news, now=None, max_age=None):
     now = now or time.time()
     published = float(news.get("published") or 0)
     if published <= 0:
         return False
-    if published > now + 120:
+    if published > now + 180:
         published = now
-    return (now - published) <= MAX_NEWS_AGE_SECONDS
+    return (now - published) <= (max_age or FALLBACK_NEWS_AGE_SECONDS)
 
 
 def _feeds_for(categories):
@@ -98,13 +108,13 @@ def _feeds_for(categories):
 
 def _mark_dead(feed_url, error):
     _DEAD_FEEDS[feed_url] = time.time() + DEAD_FOR
-    print(f"⚠️ RSS نادست شد (15 دقیقه بعد دوباره): {feed_url} | {error}")
+    print(f"⚠️ RSS نادست شد: {feed_url} | {error}")
 
 
 def _fetch_one(category, feed_url):
     items = []
     try:
-        response = requests.get(feed_url, timeout=8, headers=HEADERS)
+        response = requests.get(feed_url, timeout=10, headers=HEADERS)
         if response.status_code >= 400:
             _mark_dead(feed_url, f"HTTP {response.status_code}")
             return items
@@ -114,13 +124,15 @@ def _fetch_one(category, feed_url):
         return items
     host = source_name(feed_url)
     now = time.time()
-    for index, entry in enumerate(feed.entries[:15]):
+    for index, entry in enumerate(feed.entries[:12]):
         title = (entry.get("title") or "").strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
             continue
-        fallback = now if index < 2 else 0
+        fallback = now - index * 120
         published = entry_published(entry, fallback=fallback)
+        if published <= 0:
+            published = fallback
         items.append({
             "title": title,
             "link": link,
@@ -133,14 +145,23 @@ def _fetch_one(category, feed_url):
     return items
 
 
+def _rank(items, now):
+    fresh = [item for item in items if is_fresh(item, now, MAX_NEWS_AGE_SECONDS)]
+    if fresh:
+        fresh.sort(key=lambda item: item.get("published") or 0, reverse=True)
+        return fresh
+    older = [item for item in items if is_fresh(item, now, FALLBACK_NEWS_AGE_SECONDS)]
+    older.sort(key=lambda item: item.get("published") or 0, reverse=True)
+    return older[:8]
+
+
 def get_news(categories=None):
+    global _EMPTY_LOG_AT
     feeds = _feeds_for(categories)
     cache_key = tuple(sorted({url for _, url in feeds}))
     now = time.time()
     if _CACHE["key"] == cache_key and now - _CACHE["at"] < RSS_CACHE_SECONDS:
-        items = [item for item in _CACHE["items"] if is_fresh(item, now)]
-        items.sort(key=lambda item: item.get("published") or 0, reverse=True)
-        return items
+        return _rank(_CACHE["items"], now)
     all_news = []
     seen_links = set()
     if not feeds:
@@ -153,10 +174,13 @@ def get_news(categories=None):
                 if item["link"] in seen_links:
                     continue
                 seen_links.add(item["link"])
-                if is_fresh(item, now):
-                    all_news.append(item)
+                all_news.append(item)
     all_news.sort(key=lambda item: item.get("published") or 0, reverse=True)
     _CACHE["key"] = cache_key
     _CACHE["at"] = now
     _CACHE["items"] = all_news
-    return list(all_news)
+    ranked = _rank(all_news, now)
+    if not ranked and now - _EMPTY_LOG_AT > 120:
+        _EMPTY_LOG_AT = now
+        print(f"⚠️ خبر جدید نیست. فیدها: {len(feeds)} آیتم‌ها: {len(all_news)}")
+    return ranked
