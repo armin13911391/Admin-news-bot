@@ -10,7 +10,7 @@ from handlers.home import home_components, back_only
 
 PRESETS = [
     "به کامنت‌های یکدیگر احترام بگذارید",
-    "بی‌اکشن یادت نره",
+    "ری‌اکشن یادت نره",
     "کامنت یادت نره",
 ]
 
@@ -48,7 +48,7 @@ def comment_menu(channel):
     )
     keyboard.add(InlineKeyboardButton("✏️ متن دلخواه", callback_data=f"cmt_custom_{channel['id']}"), row=2)
     keyboard.add(InlineKeyboardButton("💬 احترام بگذارید", callback_data="cmt_pre_0"), row=3)
-    keyboard.add(InlineKeyboardButton("⚡ بی‌اکشن یادت نره", callback_data="cmt_pre_1"), row=4)
+    keyboard.add(InlineKeyboardButton("👍 ری‌اکشن یادت نره", callback_data="cmt_pre_1"), row=4)
     keyboard.add(InlineKeyboardButton("📝 کامنت یادت نره", callback_data="cmt_pre_2"), row=5)
     keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="m_comment"), row=6)
     return keyboard
@@ -107,7 +107,7 @@ async def on_callback(callback: CallbackQuery):
     if data.startswith("cmt_custom_"):
         channel_id = data.replace("cmt_custom_", "", 1)
         set_state(user_id, "comment_text", {"channel_id": channel_id})
-        await edit_message(callback, "✏️ متن کامنت را بفرست.\nمثال: کامنت یادت نره", back_only())
+        await edit_message(callback, "✏️ متن کامنت را بفرست.\nمثال: ری‌اکشن یادت نره", back_only())
         return
 
     if data.startswith("cmt_pre_"):
