@@ -19,25 +19,12 @@ def _parse_response(response):
     description = str(payload.get("description", ""))
     forbidden = code == 403 or "permission_denied" in description or "Forbidden" in description
     result_body = payload.get("result")
-    message_id = None
-    if isinstance(result_body, dict):
-        message_id = result_body.get("message_id")
-    return {
-        "ok": api_ok,
-        "code": code,
-        "forbidden": forbidden,
-        "description": description,
-        "message_id": message_id,
-    }
+    message_id = result_body.get("message_id") if isinstance(result_body, dict) else None
+    return {"ok": api_ok, "code": code, "forbidden": forbidden, "description": description, "message_id": message_id}
 
 
 def inline_keyboard(rows):
-    return {
-        "inline_keyboard": [
-            [{"text": text, "callback_data": data} for text, data in row]
-            for row in rows
-        ]
-    }
+    return {"inline_keyboard": [[{ "text": text, "callback_data": data} for text, data in row] for row in rows]}
 
 
 def send_message(channel_id, text, reply_markup=None, reply_to_message_id=None):
@@ -119,6 +106,10 @@ def deliver_broadcast(to_chat, from_chat, message_id, text="", forwarded=False):
         result = forward_message(to_chat, from_chat, message_id)
         if result.get("ok"):
             return result
+        return copy_message(to_chat, from_chat, message_id)
+    if message_id and not text:
+        return copy_message(to_chat, from_chat, message_id)
+    if message_id and text and forwarded is False:
         result = copy_message(to_chat, from_chat, message_id)
         if result.get("ok"):
             return result
