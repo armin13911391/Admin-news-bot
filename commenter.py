@@ -15,7 +15,7 @@ def _call(method, payload):
         try:
             data = response.json()
         except ValueError:
-            data = {}
+            data = {"description": response.text[:200]}
         result = data.get("result")
         message_id = None
         if isinstance(result, dict):
@@ -30,7 +30,7 @@ def _call(method, payload):
             "raw": data,
         }
     except Exception as error:
-        return {"ok": False, "description": str(error), "message_id": None}
+        return {"ok": False, "description": str(error), "message_id": None, "raw": {}}
 
 
 def extract_message_id(result):
@@ -54,73 +54,66 @@ def extract_message_id(result):
 
 
 def get_linked_chat(channel_id):
-    if channel_id in _LINKED and time.time() - _LINKED[channel_id][0] < 300:
-        return _LINKED[channel_id][1]
+    cached = _LINKED.get(channel_id)
+    if cached and time.time() - cached[0] < 180:
+        return cached[1]
     data = _call("getChat", {"chat_id": channel_id})
     result = (data.get("raw") or {}).get("result") or {}
-    linked = result.get("linked_chat_id") or result.get("linked_chat")
+    linked = (
+        result.get("linked_chat_id")
+        or result.get("linked_chat")
+        or result.get("discussion_chat_id")
+    )
     if isinstance(linked, dict):
-        linked = linked.get("id")
+        linked = linked.get("id") or linked.get("chat_id")
     _LINKED[channel_id] = (time.time(), linked)
+    if linked:
+        print(f"🔗 گروه دیدگاه {channel_id} = {linked}")
+    else:
+        print(f"⚠️ گروه دیدگاه برای {channel_id} پیدا نشد | {data.get('description')}")
     return linked
 
 
-def _try_send(chat_id, text, reply_to=None, extra=None):
-    payload = {"chat_id": chat_id, "text": text}
+def _send_to_group(group_id, text, reply_to=None, extra=None):
+    payload = {"chat_id": group_id, "text": text}
     if reply_to:
         payload["reply_to_message_id"] = int(reply_to)
     if extra:
         payload.update(extra)
-    result = _call("sendMessage", payload)
-    if result.get("ok"):
-        return result
-    form = {"chat_id": str(chat_id), "text": text}
-    if reply_to:
-        form["reply_to_message_id"] = str(int(reply_to))
-    try:
-        response = requests.post(f"{BASE_URL}/sendMessage", data=form, timeout=10)
-        data = response.json()
-        if data.get("ok"):
-            body = data.get("result") or {}
-            mid = body.get("message_id") if isinstance(body, dict) else body
-            return {"ok": True, "message_id": mid, "description": ""}
-        return {"ok": False, "description": data.get("description") or ""}
-    except Exception as error:
-        return {"ok": False, "description": str(error)}
+    return _call("sendMessage", payload)
 
 
-def post_comment(channel_id, text, reply_to=None):
+def post_comment(channel_id, text, reply_to=None, group_message_id=None, group_id=None):
     text = (text or "").strip()
     if not text:
         return {"ok": False, "description": "empty"}
-    last_error = ""
-    if reply_to:
-        result = _try_send(channel_id, text, reply_to)
+
+    target_group = group_id or get_linked_chat(channel_id)
+    if not target_group:
+        return {"ok": False, "description": "no-linked-group"}
+
+    if group_message_id:
+        result = _send_to_group(target_group, text, group_message_id)
         if result.get("ok"):
-            print(f"💬 دیدگاه روی پست {channel_id} نوشته شد")
+            print(f"💬 دیدگاه در گروه {target_group} نوشته شد")
             return result
-        last_error = result.get("description") or ""
-        linked = get_linked_chat(channel_id)
-        if linked:
-            result = _try_send(linked, text, reply_to)
-            if result.get("ok"):
-                print(f"💬 دیدگاه در گروه لینک {channel_id} نوشته شد")
-                return result
-            result = _try_send(
-                linked,
-                text,
-                extra={"reply_parameters": {"message_id": int(reply_to), "chat_id": channel_id}},
-            )
-            if result.get("ok"):
-                print(f"💬 دیدگاه با reply_parameters نوشته شد")
-                return result
-            last_error = result.get("description") or last_error
-    result = _try_send(channel_id, text, reply_to)
-    if result.get("ok"):
-        print(f"💬 کامنت بدون ریپلای روی {channel_id} رفت")
-        return result
-    print(f"⚠️ کامنت {channel_id} نرفت: {result.get('description') or last_error}")
-    return result
+
+    if reply_to:
+        result = _send_to_group(
+            target_group,
+            text,
+            extra={"reply_parameters": {"message_id": int(reply_to), "chat_id": channel_id}},
+        )
+        if result.get("ok"):
+            print(f"💬 دیدگاه با reply_parameters نوشته شد")
+            return result
+        result = _send_to_group(target_group, text, reply_to)
+        if result.get("ok"):
+            print(f"💬 دیدگاه با reply_to روی گروه نوشته شد")
+            return result
+
+    print(f"⚠️ دیدگاه {channel_id} نرفت — به کانال چیزی نمی‌فرستم")
+    return {"ok": False, "description": "group-send-failed"}
 
 
 def remember_post(user_id, channel_id, message_id):
