@@ -1,12 +1,8 @@
-# ==========================
-# AutoNewsBot User Bot
-# Version 2.1.0
-# ==========================
-
 from client import bot
 
-# ثبت هندلرها
 import handlers.start
+import handlers.home
+import handlers.shop
 import handlers.profile
 import handlers.navigation
 import handlers.channel
