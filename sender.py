@@ -1,3 +1,4 @@
+import json
 import requests
 
 from config import BOT_TOKEN
@@ -63,6 +64,28 @@ def send_photo(channel_id, photo, caption, reply_markup=None):
     except requests.RequestException as error:
         print(f"❌ خطای شبکه در ارسال عکس به {channel_id}:", error)
         return send_message(channel_id, caption, reply_markup)
+
+
+def send_photo_file(chat_id, path, caption="", reply_markup=None):
+    try:
+        with open(path, "rb") as file:
+            data = {"chat_id": str(chat_id), "caption": caption or ""}
+            if reply_markup:
+                data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+            response = requests.post(
+                f"{BASE_URL}/sendPhoto",
+                data=data,
+                files={"photo": file},
+                timeout=30,
+            )
+        result = _parse_response(response)
+        if not result["ok"]:
+            print("send_photo_file failed:", result)
+            return send_message(chat_id, caption, reply_markup)
+        return result
+    except Exception as error:
+        print("send_photo_file error:", error)
+        return send_message(chat_id, caption, reply_markup)
 
 
 def copy_message(to_chat, from_chat, message_id):
