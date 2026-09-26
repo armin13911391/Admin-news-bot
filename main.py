@@ -1,7 +1,7 @@
 import time
 
 from config import FORBIDDEN_COOLDOWN
-from rss_reader import get_news
+from rss_reader import get_news, is_fresh
 from storage import load_users, is_news_sent, mark_news_sent
 from users import update_last_send
 from sender import send_message, send_photo
@@ -97,7 +97,7 @@ def run():
                 continue
             news_list = get_news(needed_categories(channels))
             if not news_list:
-                print("⚠️ خبری پیدا نشد")
+                print("⚠️ خبر جدیدی پیدا نشد")
                 time.sleep(CHECK_INTERVAL)
                 continue
             for channel in channels:
@@ -108,6 +108,8 @@ def run():
                     link = (latest_news.get("link") or "").strip()
                     title = (latest_news.get("title") or "").strip()
                     if not link or not title:
+                        continue
+                    if not is_fresh(latest_news):
                         continue
                     if is_news_sent(channel["id"], link):
                         continue
@@ -133,10 +135,12 @@ def run():
                         break
                     mark_news_sent(channel["id"], link)
                     update_last_send(channel["user_id"], channel["id"], time.time())
+                    age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
                     print(
                         f"✅ ارسال شد به {channel['id']}\n"
                         f"📂 دسته خبر: {latest_news.get('feed_category')}\n"
                         f"🏷 فیلتر کانال: {', '.join(categories)}\n"
+                        f"⏱ عمر خبر: {age_min} دقیقه\n"
                         f"⏰ ارسال بعدی: {channel.get('interval', 10)} دقیقه دیگر"
                     )
                     break
