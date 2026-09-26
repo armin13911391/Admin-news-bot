@@ -19,6 +19,7 @@ from subscription import (
 )
 from force_join import is_force_join_enabled, is_user_joined
 from force_join_keyboard import force_join_keyboard
+from admin_store import is_admin
 
 
 def back_only():
@@ -66,7 +67,10 @@ def home_components(user_id):
     info = subscription_info(user_id)
     user = get_user(user_id) or {}
     show_free = (not info["active"]) and (not user.get("free_claimed"))
-    return home_inline_menu(show_free=show_free)
+    keyboard = home_inline_menu(show_free=show_free)
+    if is_admin(user_id):
+        keyboard.add(InlineKeyboardButton("🛠 پنل مدیریت", callback_data="m_admin"), row=8)
+    return keyboard
 
 
 async def show_home(target, user_id, reply=False):
@@ -109,16 +113,20 @@ async def on_callback(callback: CallbackQuery):
         await show_home(callback, user_id)
         return
 
+    if data == "m_admin":
+        if not is_admin(user_id):
+            await edit_message(callback, "🚫 این بخش فقط برای ادمین است.", home_components(user_id))
+            return
+        from handlers.admin_panel import admin_menu
+        await edit_message(callback, "🛠 پنل مدیریت\n\nیک گزینه را انتخاب کن.", admin_menu())
+        return
+
     if data == "m_settings":
         if not has_subscription(user_id):
             await edit_message(callback, _need_sub_text(), home_components(user_id))
             return
         if not channels:
-            await edit_message(
-                callback,
-                "📢 هنوز کانالی ثبت نشده.\nاول از «افزودن کانال» کانالت را ثبت کن.",
-                home_components(user_id),
-            )
+            await edit_message(callback, "📢 هنوز کانالی ثبت نشده.\nاول از «افزودن کانال» کانالت را ثبت کن.", home_components(user_id))
             return
         await edit_message(callback, "⚙️ کدام کانال را می‌خوای تنظیم کنی؟", channel_inline_menu(channels))
         return
@@ -129,18 +137,10 @@ async def on_callback(callback: CallbackQuery):
             return
         limit = max_channels_for(user_id)
         if len(channels) >= limit:
-            await edit_message(
-                callback,
-                f"🛑 سقف کانال اشتراک شما {limit} تاست.\nبرای سقف بیشتر، اشتراک پولی بخر.",
-                home_components(user_id),
-            )
+            await edit_message(callback, f"🛑 سقف کانال اشتراک شما {limit} تاست.\nبرای سقف بیشتر، اشتراک پولی بخر.", home_components(user_id))
             return
         set_state(user_id, "add_channel", {})
-        await edit_message(
-            callback,
-            "➕ آیدی کانال را بفرست.\n\nمثال: @mychannel\n\nربات باید در کانال ادمین باشد.",
-            back_only(),
-        )
+        await edit_message(callback, "➕ آیدی کانال را بفرست.\n\nمثال: @mychannel\n\nربات باید در کانال ادمین باشد.", back_only())
         return
 
     if data == "m_pause":
@@ -151,13 +151,8 @@ async def on_callback(callback: CallbackQuery):
             await edit_message(callback, "📢 اول یک کانال ثبت کن.", home_components(user_id))
             return
         if len(channels) == 1:
-            channel_id = channels[0]["id"]
-            set_channel_status(user_id, channel_id, "paused")
-            await edit_message(
-                callback,
-                f"⏸️ ارسال متوقف شد\n\nاز الان دیگر در {channel_id} خبری نمی‌ذارم.\nهر وقت خواستی از «شروع ارسال» دوباره روشن کن.",
-                home_components(user_id),
-            )
+            set_channel_status(user_id, channels[0]["id"], "paused")
+            await edit_message(callback, f"⏸️ ارسال متوقف شد\n\nاز الان دیگر در {channels[0]['id']} خبری نمی‌ذارم.", home_components(user_id))
             return
         await edit_message(callback, "⏸️ کدام کانال متوقف شود؟", channel_pick_menu(channels, "pause_"))
         return
@@ -165,11 +160,7 @@ async def on_callback(callback: CallbackQuery):
     if data.startswith("pause_"):
         channel_id = data.replace("pause_", "", 1)
         set_channel_status(user_id, channel_id, "paused")
-        await edit_message(
-            callback,
-            f"⏸️ ارسال متوقف شد\n\nدیگر در {channel_id} خبری نمی‌ذارم.",
-            home_components(user_id),
-        )
+        await edit_message(callback, f"⏸️ ارسال متوقف شد\n\nدیگر در {channel_id} خبری نمی‌ذارم.", home_components(user_id))
         return
 
     if data == "m_resume":
@@ -182,18 +173,10 @@ async def on_callback(callback: CallbackQuery):
         if len(channels) == 1:
             channel = channels[0]
             if channel.get("status") == "active":
-                await edit_message(
-                    callback,
-                    f"✅ ربات از قبل در {channel['id']} فعال است و دارد خبر می‌گذارد.",
-                    home_components(user_id),
-                )
+                await edit_message(callback, f"✅ ربات از قبل در {channel['id']} فعال است.", home_components(user_id))
                 return
             set_channel_status(user_id, channel["id"], "active")
-            await edit_message(
-                callback,
-                f"▶️ ارسال شروع شد\n\nاز الان در {channel['id']} خبر می‌ذارم.\n🟢 وضعیت: فعال",
-                home_components(user_id),
-            )
+            await edit_message(callback, f"▶️ ارسال شروع شد\n\nاز الان در {channel['id']} خبر می‌ذارم.", home_components(user_id))
             return
         await edit_message(callback, "▶️ کدام کانال شروع شود؟", channel_pick_menu(channels, "resume_"))
         return
@@ -202,35 +185,19 @@ async def on_callback(callback: CallbackQuery):
         channel_id = data.replace("resume_", "", 1)
         current = next((item for item in channels if item.get("id") == channel_id), None)
         if current and current.get("status") == "active":
-            await edit_message(
-                callback,
-                f"✅ ربات از قبل در {channel_id} فعال است.",
-                home_components(user_id),
-            )
+            await edit_message(callback, f"✅ ربات از قبل در {channel_id} فعال است.", home_components(user_id))
             return
         set_channel_status(user_id, channel_id, "active")
-        await edit_message(
-            callback,
-            f"▶️ ارسال شروع شد\n\nاز الان در {channel_id} خبر می‌ذارم.\n🟢 وضعیت: فعال",
-            home_components(user_id),
-        )
+        await edit_message(callback, f"▶️ ارسال شروع شد\n\nاز الان در {channel_id} خبر می‌ذارم.", home_components(user_id))
         return
 
     if data == "m_buy":
-        await edit_message(
-            callback,
-            "💳 خرید اشتراک\n\nتعرفه موردنظرت را انتخاب کن. بعد از پرداخت، کد لایسنس برایت ارسال می‌شود.",
-            plans_menu(),
-        )
+        await edit_message(callback, "💳 خرید اشتراک\n\nتعرفه موردنظرت را انتخاب کن.", plans_menu())
         return
 
     if data == "m_license":
         set_state(user_id, "enter_license", {})
-        await edit_message(
-            callback,
-            "🔑 ورود کد لایسنس\n\nکدی که برایت ارسال شده را همین جا بفرست.\nمثال: ANB-30-XXXX",
-            back_only(),
-        )
+        await edit_message(callback, "🔑 ورود کد لایسنس\n\nکدی که برایت ارسال شده را همین جا بفرست.", back_only())
         return
 
     if data == "m_free":
@@ -238,25 +205,13 @@ async def on_callback(callback: CallbackQuery):
             await edit_message(callback, "✅ همین حالا اشتراک فعال داری.", home_components(user_id))
             return
         if user.get("free_claimed"):
-            await edit_message(
-                callback,
-                "🎁 اشتراک رایگان قبلاً گرفته شده.\nبرای ادامه از بخش خرید اشتراک استفاده کن.",
-                home_components(user_id),
-            )
+            await edit_message(callback, "🎁 اشتراک رایگان قبلاً گرفته شده.", home_components(user_id))
             return
         activate_subscription(user_id, "free", FREE_DAYS)
         update_user(user_id, {"free_claimed": True})
-        await edit_message(
-            callback,
-            f"🎉 اشتراک رایگان {FREE_DAYS} روزه فعال شد\n\n➖ فقط ۱ کانال\n🔒 برخی دسته‌ها قفل است\n🔒 زمان ۱ و ۵ دقیقه قفل است",
-            home_components(user_id),
-        )
+        await edit_message(callback, f"🎉 اشتراک رایگان {FREE_DAYS} روزه فعال شد", home_components(user_id))
         return
 
     if data == "m_support":
-        await edit_message(
-            callback,
-            "📞 پشتیبانی\n\nاگر سوال یا مشکلی داری به این آیدی پیام بده:\n\n👤 @pv_ahzar04",
-            home_components(user_id),
-        )
+        await edit_message(callback, "📞 پشتیبانی\n\n👤 @pv_ahzar04", home_components(user_id))
         return
