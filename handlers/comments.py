@@ -2,11 +2,12 @@ from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardBut
 
 from client import bot
 from ui import edit_message
-from users import get_user, _patch_channel
+from users import get_user, load_users, _patch_channel
 from keyboards import channel_pick_menu
 from states import set_state, get_state, clear_state
 from subscription import has_subscription
 from handlers.home import home_components, back_only
+from commenter import post_comment, remember_post
 
 PRESETS = [
     "به کامنت‌های یکدیگر احترام بگذارید",
@@ -26,6 +27,25 @@ def find_channel(user, channel_id):
     return None
 
 
+def find_live_channel(chat):
+    username = getattr(chat, "username", None)
+    chat_id = str(getattr(chat, "id", "") or "")
+    keys = set()
+    if username:
+        keys.add("@" + str(username).lstrip("@"))
+        keys.add(str(username).lstrip("@"))
+    if chat_id:
+        keys.add(chat_id)
+    for user_id, user in load_users().items():
+        if not isinstance(user, dict):
+            continue
+        for channel in user.get("channels") or []:
+            cid = str(channel.get("id") or "")
+            if cid in keys or cid.lstrip("@") in keys:
+                return str(user_id), channel
+    return None, None
+
+
 def comment_text_view(channel):
     on = bool(channel.get("comment_on"))
     text = (channel.get("comment_text") or "").strip() or "ندارد"
@@ -35,22 +55,23 @@ def comment_text_view(channel):
         "━━━━━━━━━━━━━━\n"
         f"وضعیت: {status}\n"
         f"متن: {text}\n\n"
-        "اگر کامنت کانال باز باشد، بعد از هر خبر همین متن زیر پست نوشته می‌شود."
+        "بعد از هر پست جدید کانال، همین متن می‌رود دیدگاه."
     )
 
 
 def comment_menu(channel):
     on = bool(channel.get("comment_on"))
+    cid = channel["id"]
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
-        InlineKeyboardButton("🔴 خاموش کردن" if on else "🟢 روشن کردن", callback_data=f"cmt_toggle_{channel['id']}"),
+        InlineKeyboardButton("🔴 خاموش کردن" if on else "🟢 روشن کردن", callback_data=f"cmt_toggle_{cid}"),
         row=1,
     )
-    keyboard.add(InlineKeyboardButton("✏️ متن دلخواه", callback_data=f"cmt_custom_{channel['id']}"), row=2)
-    keyboard.add(InlineKeyboardButton("💬 احترام بگذارید", callback_data="cmt_pre_0"), row=3)
-    keyboard.add(InlineKeyboardButton("👍 ری‌اکشن یادت نره", callback_data="cmt_pre_1"), row=4)
-    keyboard.add(InlineKeyboardButton("📝 کامنت یادت نره", callback_data="cmt_pre_2"), row=5)
-    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="m_comment"), row=6)
+    keyboard.add(InlineKeyboardButton("✏️ متن دلخواه", callback_data=f"cmt_custom_{cid}"), row=2)
+    keyboard.add(InlineKeyboardButton("💬 احترام بگذارید", callback_data=f"cmt_pre_0_{cid}"), row=3)
+    keyboard.add(InlineKeyboardButton("👍 ری‌اکشن یادت نره", callback_data=f"cmt_pre_1_{cid}"), row=4)
+    keyboard.add(InlineKeyboardButton("📝 کامنت یادت نره", callback_data=f"cmt_pre_2_{cid}"), row=5)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="m_home"), row=6)
     return keyboard
 
 
@@ -64,6 +85,17 @@ async def show_comment_panel(callback, user_id, channel_id):
     await edit_message(callback, comment_text_view(channel), comment_menu(channel))
 
 
+def save_comment(user_id, channel_id, text=None, enabled=None):
+    payload = {}
+    if text is not None:
+        payload["comment_text"] = text[:400]
+    if enabled is not None:
+        payload["comment_on"] = bool(enabled)
+    if payload:
+        _patch_channel(user_id, channel_id, payload)
+    return find_channel(get_user(user_id) or {}, channel_id)
+
+
 @bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
@@ -72,7 +104,6 @@ async def on_callback(callback: CallbackQuery):
     channels = user.get("channels") or []
 
     if data == "m_comment":
-        clear_state(user_id)
         if not has_subscription(user_id):
             await edit_message(callback, _need_sub(), home_components(user_id))
             return
@@ -98,9 +129,7 @@ async def on_callback(callback: CallbackQuery):
         if new_value and not (channel.get("comment_text") or "").strip():
             await edit_message(callback, "⚠️ اول یک متن برای کامنت انتخاب کن.", comment_menu(channel))
             return
-        _patch_channel(user_id, channel_id, {"comment_on": new_value})
-        user = get_user(user_id) or {}
-        channel = find_channel(user, channel_id)
+        channel = save_comment(user_id, channel_id, enabled=new_value)
         await edit_message(callback, comment_text_view(channel), comment_menu(channel))
         return
 
@@ -111,22 +140,39 @@ async def on_callback(callback: CallbackQuery):
         return
 
     if data.startswith("cmt_pre_"):
-        index = int(data.replace("cmt_pre_", ""))
-        state = get_state(user_id)
-        channel_id = (state.get("data") or {}).get("channel_id")
-        if not channel_id and channels:
-            channel_id = channels[0]["id"]
+        rest = data.replace("cmt_pre_", "", 1)
+        index_s, sep, channel_id = rest.partition("_")
+        if not sep:
+            channel_id = ((get_state(user_id).get("data") or {}).get("channel_id"))
+        try:
+            index = int(index_s)
+        except Exception:
+            return
         if index < 0 or index >= len(PRESETS) or not channel_id:
             return
-        _patch_channel(user_id, channel_id, {"comment_text": PRESETS[index], "comment_on": True})
-        user = get_user(user_id) or {}
-        channel = find_channel(user, channel_id)
-        await edit_message(callback, "✅ متن ذخیره شد و کامنت روشن شد.\n\n" + comment_text_view(channel), comment_menu(channel))
+        channel = save_comment(user_id, channel_id, text=PRESETS[index], enabled=True)
+        await edit_message(callback, "✅ متن ذخیره شد و کامنت روشن شد.\n\n" + comment_text_view(channel or {"id": channel_id, "comment_on": True, "comment_text": PRESETS[index]}), comment_menu(channel or {"id": channel_id, "comment_on": True, "comment_text": PRESETS[index]}))
         return
 
 
 @bot.event
 async def on_message(message: Message):
+    chat = getattr(message, "chat", None)
+    chat_type = getattr(chat, "type", None) if chat else None
+    if chat_type == "channel":
+        owner_id, channel = find_live_channel(chat)
+        if not channel or not channel.get("comment_on"):
+            return
+        text = (channel.get("comment_text") or "").strip()
+        incoming = (message.content or "").strip()
+        if not text or incoming == text:
+            return
+        mid = getattr(message, "message_id", None) or getattr(message, "id", None)
+        remember_post(owner_id, channel.get("id"), mid)
+        print(f"💬 پست کانال {channel.get('id')} دیده شد — کامنت می‌رود")
+        post_comment(channel.get("id"), text, mid)
+        return
+
     if message.from_user is None:
         return
     user_id = message.from_user.id
@@ -137,8 +183,6 @@ async def on_message(message: Message):
     text = (message.content or "").strip()
     if not channel_id or not text:
         return
-    _patch_channel(user_id, channel_id, {"comment_text": text[:400], "comment_on": True})
+    channel = save_comment(user_id, channel_id, text=text, enabled=True)
     clear_state(user_id)
-    user = get_user(user_id) or {}
-    channel = find_channel(user, channel_id) or {"id": channel_id, "comment_on": True, "comment_text": text}
-    await message.reply("✅ متن کامنت ذخیره شد و فعال شد.\n\n" + comment_text_view(channel), components=comment_menu(channel))
+    await message.reply("✅ متن کامنت ذخیره شد و فعال شد.\n\n" + comment_text_view(channel or {"id": channel_id, "comment_on": True, "comment_text": text}), components=comment_menu(channel or {"id": channel_id, "comment_on": True, "comment_text": text}))
