@@ -18,6 +18,14 @@ from users import (
 )
 from handlers.channel import show_channels
 from states import set_state, get_state, clear_state
+from subscription import is_free_user, FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES
+
+
+def _locks(user_id):
+    if is_free_user(user_id):
+        locked_cats = [name for name in ("جنگ", "اقتصاد", "فناوری", "سیاسی", "همه") if name not in FREE_ALLOWED_CATEGORIES]
+        return locked_cats, FREE_LOCKED_TIMES
+    return [], set()
 
 
 def _channel_flags(user, channel_id):
@@ -66,9 +74,13 @@ async def _show_settings(callback, channel_id):
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
+    locked_cats, locked_times = _locks(user_id)
 
     if data.startswith("cat_select_"):
         category = data.replace("cat_select_", "", 1)
+        if category in locked_cats:
+            await edit_message(callback, "این دسته با اشتراک رایگان قفل است.", category_menu(get_state(user_id)["data"].get("categories", []), locked_cats))
+            return
         state = get_state(user_id)
         selected = list(state["data"].get("categories", []))
         if category == "همه":
@@ -80,17 +92,15 @@ async def on_callback(callback: CallbackQuery):
             else:
                 selected.append(category)
             if not selected:
-                selected = ["همه"]
+                selected = ["ورزش"] if locked_cats else ["همه"]
         state["data"]["categories"] = selected
         set_state(user_id, state["state"] or "category_select", state["data"])
         pretty = "، ".join(selected)
         await edit_message(
             callback,
             "🏷 انتخاب دسته‌بندی\n\n"
-            "فقط خبر همین دسته‌ها برای کانال ارسال می‌شود.\n"
-            "می‌توانید چند دسته را با هم انتخاب کنید.\n\n"
             f"انتخاب فعلی: {pretty}",
-            category_menu(selected),
+            category_menu(selected, locked_cats),
         )
         return
 
@@ -102,9 +112,8 @@ async def on_callback(callback: CallbackQuery):
         channel_id = data.replace("time_", "", 1)
         await edit_message(
             callback,
-            "⏱ فاصله ارسال خبر\n\n"
-            "هر چند دقیقه یک خبر جدید برای این کانال فرستاده شود؟",
-            send_time_menu(channel_id),
+            "⏱ فاصله ارسال خبر\n\nهر چند دقیقه یک خبر جدید فرستاده شود؟",
+            send_time_menu(channel_id, locked_times),
         )
         return
 
@@ -113,25 +122,26 @@ async def on_callback(callback: CallbackQuery):
             parts = data.split("_", 2)
             interval = int(parts[1])
             channel_id = parts[2].strip()
+            if interval in locked_times:
+                await edit_message(callback, "این زمان با اشتراک رایگان قفل است.", send_time_menu(channel_id, locked_times))
+                return
             if update_send_time(user_id, channel_id, interval):
                 await _show_settings(callback, channel_id)
             else:
-                await edit_message(callback, "❌ زمان ارسال ذخیره نشد.")
+                await edit_message(callback, "زمان ارسال ذخیره نشد.")
         except Exception as error:
-            print("❌ خطا در تغییر زمان ارسال:", error)
-            await edit_message(callback, "❌ زمان ارسال ذخیره نشد.")
+            print("خطا در تغییر زمان ارسال:", error)
+            await edit_message(callback, "زمان ارسال ذخیره نشد.")
         return
 
     if data.startswith("img_"):
-        channel_id = data.replace("img_", "", 1)
-        toggle_channel_image(user_id, channel_id)
-        await _show_settings(callback, channel_id)
+        toggle_channel_image(user_id, data.replace("img_", "", 1))
+        await _show_settings(callback, data.replace("img_", "", 1))
         return
 
     if data.startswith("emoji_"):
-        channel_id = data.replace("emoji_", "", 1)
-        toggle_channel_emoji(user_id, channel_id)
-        await _show_settings(callback, channel_id)
+        toggle_channel_emoji(user_id, data.replace("emoji_", "", 1))
+        await _show_settings(callback, data.replace("emoji_", "", 1))
         return
 
     if data == "cat_save":
@@ -144,7 +154,7 @@ async def on_callback(callback: CallbackQuery):
             clear_state(user_id)
             await _show_settings(callback, channel_id)
         else:
-            await edit_message(callback, "❌ دسته‌بندی ذخیره نشد.")
+            await edit_message(callback, "دسته‌بندی ذخیره نشد.")
         return
 
     if data.startswith("cat_"):
@@ -156,36 +166,22 @@ async def on_callback(callback: CallbackQuery):
         await edit_message(
             callback,
             "🏷 انتخاب دسته‌بندی\n\n"
-            "فقط خبر همین دسته‌ها برای کانال ارسال می‌شود.\n\n"
             f"انتخاب فعلی: {pretty}",
-            category_menu(categories),
+            category_menu(categories, locked_cats),
         )
         return
 
     if data.startswith("delete_"):
         channel_id = data.replace("delete_", "", 1)
-        await edit_message(
-            callback,
-            f"⚠️ حذف کانال\n\n{channel_id}\n\nاگر حذف شود، ارسال خبر به این کانال قطع می‌شود.",
-            delete_channel_menu(channel_id),
-        )
+        await edit_message(callback, f"حذف کانال {channel_id} انجام شود؟", delete_channel_menu(channel_id))
         return
 
     if data.startswith("yesdel_"):
         channel_id = data.replace("yesdel_", "", 1)
         delete_channel(user_id, channel_id)
-        class FakeMessage:
-            pass
-        fake = FakeMessage()
-        fake.from_user = callback.from_user
-        fake.reply = callback.message.edit
-        try:
-            await show_channels(fake)
-        except Exception:
-            await edit_message(callback, "✅ کانال حذف شد. از منو دوباره «کانال‌های من» را بزنید.")
+        await edit_message(callback, "کانال حذف شد.")
         return
 
     if data.startswith("nodel_"):
-        channel_id = data.replace("nodel_", "", 1)
-        await _show_settings(callback, channel_id)
+        await _show_settings(callback, data.replace("nodel_", "", 1))
         return
