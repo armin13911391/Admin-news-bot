@@ -2,6 +2,7 @@ from client import bot
 
 import handlers.start
 import handlers.home
+import handlers.menu_patch
 import handlers.shop
 import handlers.stats
 import handlers.comments
