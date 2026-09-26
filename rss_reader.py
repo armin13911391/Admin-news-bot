@@ -1,17 +1,19 @@
+import calendar
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 import feedparser
 import requests
 
-from config import CATEGORY_FEEDS, RSS_CACHE_SECONDS
+from config import CATEGORY_FEEDS, MAX_NEWS_AGE_SECONDS, RSS_CACHE_SECONDS
 
 
 _CACHE = {"key": None, "at": 0, "items": []}
 _DEAD_FEEDS = {}
 DEAD_FOR = 900
-HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.2"}
+HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.3"}
 
 
 def extract_image(entry):
@@ -40,6 +42,43 @@ def source_name(feed_url):
         return feed_url
 
 
+def _timestamp_from_struct(value):
+    if not value:
+        return 0
+    try:
+        return int(calendar.timegm(value))
+    except Exception:
+        return 0
+
+
+def entry_published(entry, fallback=0):
+    for key in ("published_parsed", "updated_parsed"):
+        stamp = _timestamp_from_struct(entry.get(key))
+        if stamp:
+            return stamp
+    for key in ("published", "updated"):
+        raw = entry.get(key)
+        if not raw:
+            continue
+        try:
+            stamp = int(parsedate_to_datetime(raw).timestamp())
+            if stamp:
+                return stamp
+        except Exception:
+            continue
+    return fallback
+
+
+def is_fresh(news, now=None):
+    now = now or time.time()
+    published = float(news.get("published") or 0)
+    if published <= 0:
+        return False
+    if published > now + 120:
+        published = now
+    return (now - published) <= MAX_NEWS_AGE_SECONDS
+
+
 def _feeds_for(categories):
     if not categories or "همه" in categories:
         categories = list(CATEGORY_FEEDS.keys())
@@ -50,8 +89,7 @@ def _feeds_for(categories):
         for url in CATEGORY_FEEDS.get(category, []):
             if url in seen:
                 continue
-            until = _DEAD_FEEDS.get(url, 0)
-            if until > now:
+            if _DEAD_FEEDS.get(url, 0) > now:
                 continue
             seen.add(url)
             selected.append((category, url))
@@ -75,11 +113,14 @@ def _fetch_one(category, feed_url):
         _mark_dead(feed_url, error)
         return items
     host = source_name(feed_url)
-    for entry in feed.entries[:20]:
+    now = time.time()
+    for index, entry in enumerate(feed.entries[:15]):
         title = (entry.get("title") or "").strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
             continue
+        fallback = now if index < 2 else 0
+        published = entry_published(entry, fallback=fallback)
         items.append({
             "title": title,
             "link": link,
@@ -87,6 +128,7 @@ def _fetch_one(category, feed_url):
             "source": feed_url,
             "source_name": host,
             "feed_category": category,
+            "published": published,
         })
     return items
 
@@ -96,11 +138,13 @@ def get_news(categories=None):
     cache_key = tuple(sorted({url for _, url in feeds}))
     now = time.time()
     if _CACHE["key"] == cache_key and now - _CACHE["at"] < RSS_CACHE_SECONDS:
-        return list(_CACHE["items"])
+        items = [item for item in _CACHE["items"] if is_fresh(item, now)]
+        items.sort(key=lambda item: item.get("published") or 0, reverse=True)
+        return items
     all_news = []
     seen_links = set()
     if not feeds:
-        return list(_CACHE.get("items") or [])
+        return []
     workers = min(8, len(feeds))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_fetch_one, category, url) for category, url in feeds]
@@ -109,7 +153,9 @@ def get_news(categories=None):
                 if item["link"] in seen_links:
                     continue
                 seen_links.add(item["link"])
-                all_news.append(item)
+                if is_fresh(item, now):
+                    all_news.append(item)
+    all_news.sort(key=lambda item: item.get("published") or 0, reverse=True)
     _CACHE["key"] = cache_key
     _CACHE["at"] = now
     _CACHE["items"] = all_news
