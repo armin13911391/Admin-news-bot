@@ -4,7 +4,7 @@ from config import FORBIDDEN_COOLDOWN
 from rss_reader import get_news, is_fresh
 from storage import load_users, is_news_sent, mark_news_sent
 from users import update_last_send
-from sender import send_message, send_photo
+from sender import send_message, send_photo, send_comment
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
@@ -36,6 +36,8 @@ def get_all_channels():
             item.setdefault("send_image", True)
             item.setdefault("show_emoji", True)
             item.setdefault("footer_text", "")
+            item.setdefault("comment_on", False)
+            item.setdefault("comment_text", "")
             channels.append(item)
     return channels
 
@@ -82,6 +84,23 @@ def send_news_to_channel(channel, news):
     if channel.get("send_image", True) and image:
         return send_photo(channel["id"], image, message)
     return send_message(channel["id"], message)
+
+
+def maybe_comment(channel, result):
+    if not channel.get("comment_on"):
+        return
+    text = (channel.get("comment_text") or "").strip()
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if not text or not message_id:
+        return
+    try:
+        comment = send_comment(channel["id"], text, message_id)
+        if comment.get("ok"):
+            print(f"💬 کامنت روی {channel['id']} نوشته شد")
+        else:
+            print(f"⚠️ کامنت {channel['id']} نرفت ({comment.get('description', '')[:80]})")
+    except Exception as error:
+        print("comment error:", error)
 
 
 def mark_forbidden(channel_id):
@@ -149,6 +168,7 @@ def run():
                         break
                     mark_news_sent(channel["id"], link)
                     update_last_send(channel["user_id"], channel["id"], time.time())
+                    maybe_comment(channel, result)
                     try:
                         record_message(channel["id"])
                     except Exception:
