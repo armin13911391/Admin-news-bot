@@ -10,12 +10,10 @@ def load_users():
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
-
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as file:
             json.dump({}, file, ensure_ascii=False, indent=4)
         return {}
-
     try:
         with open(path, "r", encoding="utf-8") as file:
             users = json.load(file)
@@ -29,7 +27,6 @@ def save_users(users):
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
-
     with open(path, "w", encoding="utf-8") as file:
         json.dump(users, file, ensure_ascii=False, indent=4)
 
@@ -41,7 +38,6 @@ def user_exists(user_id):
 def add_user(user_id, first_name, username=None):
     users = load_users()
     user_id = str(user_id)
-
     if user_id not in users:
         users[user_id] = {
             "first_name": first_name,
@@ -49,10 +45,8 @@ def add_user(user_id, first_name, username=None):
             "join_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "wallet": 0,
             "channels": [],
-            "subscription": {
-                "type": None,
-                "expire": None,
-            },
+            "subscription": {"type": None, "expire": None, "total_days": 0},
+            "free_claimed": False,
             "invited_by": None,
             "invite_count": 0,
             "is_admin": False,
@@ -72,21 +66,17 @@ def update_user(user_id, data):
         save_users(users)
 
 
-def add_channel(user_id, channel):
+def add_channel(user_id, channel, max_channels=3):
     users = load_users()
     user_id = str(user_id)
-
     if user_id not in users:
         return False
-
     channels = users[user_id].setdefault("channels", [])
-    if len(channels) >= 3:
+    if len(channels) >= int(max_channels):
         return False
-
     for item in channels:
         if item.get("id") == channel:
             return False
-
     channels.append({
         "id": channel,
         "status": "active",
@@ -106,11 +96,23 @@ def delete_channel(user_id, channel_id):
     user_id = str(user_id)
     if user_id not in users:
         return False
-
     channels = users[user_id].get("channels", [])
     for channel in list(channels):
         if channel.get("id") == channel_id:
             channels.remove(channel)
+            save_users(users)
+            return True
+    return False
+
+
+def set_channel_status(user_id, channel_id, status):
+    users = load_users()
+    user_id = str(user_id)
+    if user_id not in users:
+        return False
+    for channel in users[user_id].get("channels", []):
+        if channel.get("id") == channel_id:
+            channel["status"] = status
             save_users(users)
             return True
     return False
@@ -121,7 +123,6 @@ def _toggle_flag(user_id, channel_id, key, default=True):
     user_id = str(user_id)
     if user_id not in users:
         return None
-
     for channel in users[user_id].get("channels", []):
         if channel.get("id") == channel_id:
             channel[key] = not channel.get(key, default)
@@ -143,7 +144,6 @@ def update_footer_text(user_id, channel_id, text):
     user_id = str(user_id)
     if user_id not in users:
         return False
-
     for channel in users[user_id].get("channels", []):
         if channel.get("id") == channel_id:
             channel["footer_text"] = text
@@ -157,10 +157,8 @@ def update_categories(user_id, channel_id, categories):
     user_id = str(user_id)
     if user_id not in users:
         return False
-
     if not categories:
         categories = ["همه"]
-
     for channel in users[user_id].get("channels", []):
         if channel.get("id") == channel_id:
             channel["categories"] = categories
@@ -174,7 +172,6 @@ def update_send_time(user_id, channel_id, interval):
     user_id = str(user_id)
     if user_id not in users:
         return False
-
     for channel in users[user_id].get("channels", []):
         if channel.get("id") == channel_id:
             channel["interval"] = int(interval)
@@ -188,7 +185,6 @@ def update_last_send(user_id, channel_id, last_send):
     user_id = str(user_id)
     if user_id not in users:
         return False
-
     for channel in users[user_id].get("channels", []):
         if channel.get("id") == channel_id:
             channel["last_send"] = last_send
