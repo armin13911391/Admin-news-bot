@@ -10,8 +10,9 @@ from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
 
 
-CHECK_INTERVAL = 15
+CHECK_INTERVAL = 20
 _FORBIDDEN_UNTIL = {}
+_LAST_EMPTY = 0
 
 
 def get_all_channels():
@@ -87,17 +88,20 @@ def mark_forbidden(channel_id):
 
 
 def run():
+    global _LAST_EMPTY
     print("🚀 AutoNewsBot MultiChannel Started...")
     while True:
         try:
             channels = get_all_channels()
             if not channels:
-                print("ℹ️ کانال فعالی برای ارسال نیست")
+                now = time.time()
+                if now - _LAST_EMPTY > 120:
+                    print("ℹ️ کانال فعالی برای ارسال نیست")
+                    _LAST_EMPTY = now
                 time.sleep(CHECK_INTERVAL)
                 continue
             news_list = get_news(needed_categories(channels))
             if not news_list:
-                print("⚠️ خبر جدیدی پیدا نشد")
                 time.sleep(CHECK_INTERVAL)
                 continue
             for channel in channels:
