@@ -20,13 +20,21 @@ def _parse_response(response):
     return {"ok": api_ok, "code": code, "forbidden": forbidden, "description": description}
 
 
-def send_message(channel_id, text):
+def inline_keyboard(rows):
+    return {
+        "inline_keyboard": [
+            [{"text": text, "callback_data": data} for text, data in row]
+            for row in rows
+        ]
+    }
+
+
+def send_message(channel_id, text, reply_markup=None):
     try:
-        response = requests.post(
-            f"{BASE_URL}/sendMessage",
-            json={"chat_id": channel_id, "text": text},
-            timeout=15,
-        )
+        payload = {"chat_id": channel_id, "text": text}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        response = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=15)
         result = _parse_response(response)
         if not result["ok"]:
             print(f"❌ خطا در ارسال متن به {channel_id}: {result['code']} {result.get('description', '')[:160]}")
@@ -36,23 +44,38 @@ def send_message(channel_id, text):
         return {"ok": False, "code": 0, "forbidden": False}
 
 
-def send_photo(channel_id, photo_url, caption):
-    if not isinstance(photo_url, str) or not photo_url.startswith("http"):
-        return send_message(channel_id, caption)
+def send_photo(channel_id, photo, caption, reply_markup=None):
+    payload = {"chat_id": channel_id, "photo": photo, "caption": caption or ""}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    if not isinstance(photo, str) or not photo:
+        return send_message(channel_id, caption, reply_markup)
     try:
-        response = requests.post(
-            f"{BASE_URL}/sendPhoto",
-            json={"chat_id": channel_id, "photo": photo_url, "caption": caption},
-            timeout=15,
-        )
+        response = requests.post(f"{BASE_URL}/sendPhoto", json=payload, timeout=20)
         result = _parse_response(response)
         if result["ok"]:
             return result
         if result["forbidden"]:
-            print(f"❌ ربات در {channel_id} دسترسی ارسال ندارد. این کانال موقتاً نادیده می‌شود.")
+            print(f"❌ ربات در {channel_id} دسترسی ارسال ندارد.")
             return result
-        print(f"⚠️ ارسال عکس به {channel_id} ناموفق بود ({result['code']})؛ متن فرستاده می‌شود.")
-        return send_message(channel_id, caption)
+        print(f"⚠️ ارسال عکس به {channel_id} ناموفق بود ({result['code']})")
+        return send_message(channel_id, caption, reply_markup)
     except requests.RequestException as error:
         print(f"❌ خطای شبکه در ارسال عکس به {channel_id}:", error)
-        return send_message(channel_id, caption)
+        return send_message(channel_id, caption, reply_markup)
+
+
+def copy_message(to_chat, from_chat, message_id):
+    try:
+        response = requests.post(
+            f"{BASE_URL}/copyMessage",
+            json={
+                "chat_id": to_chat,
+                "from_chat_id": from_chat,
+                "message_id": message_id,
+            },
+            timeout=15,
+        )
+        return _parse_response(response)
+    except requests.RequestException:
+        return {"ok": False}
