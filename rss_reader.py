@@ -9,6 +9,9 @@ from config import CATEGORY_FEEDS, RSS_CACHE_SECONDS
 
 
 _CACHE = {"key": None, "at": 0, "items": []}
+_DEAD_FEEDS = {}
+DEAD_FOR = 900
+HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.2"}
 
 
 def extract_image(entry):
@@ -40,24 +43,36 @@ def source_name(feed_url):
 def _feeds_for(categories):
     if not categories or "همه" in categories:
         categories = list(CATEGORY_FEEDS.keys())
+    now = time.time()
     seen = set()
     selected = []
     for category in categories:
         for url in CATEGORY_FEEDS.get(category, []):
-            if url not in seen:
-                seen.add(url)
-                selected.append((category, url))
+            if url in seen:
+                continue
+            until = _DEAD_FEEDS.get(url, 0)
+            if until > now:
+                continue
+            seen.add(url)
+            selected.append((category, url))
     return selected
+
+
+def _mark_dead(feed_url, error):
+    _DEAD_FEEDS[feed_url] = time.time() + DEAD_FOR
+    print(f"⚠️ RSS نادست شد (15 دقیقه بعد دوباره): {feed_url} | {error}")
 
 
 def _fetch_one(category, feed_url):
     items = []
     try:
-        response = requests.get(feed_url, timeout=8, headers={"User-Agent": "AutoNewsBot/2.1"})
-        response.raise_for_status()
+        response = requests.get(feed_url, timeout=8, headers=HEADERS)
+        if response.status_code >= 400:
+            _mark_dead(feed_url, f"HTTP {response.status_code}")
+            return items
         feed = feedparser.parse(response.content)
     except Exception as error:
-        print(f"❌ خطا در خواندن RSS: {feed_url} | {error}")
+        _mark_dead(feed_url, error)
         return items
     host = source_name(feed_url)
     for entry in feed.entries[:20]:
@@ -65,7 +80,14 @@ def _fetch_one(category, feed_url):
         link = (entry.get("link") or "").strip()
         if not title or not link:
             continue
-        items.append({"title": title, "link": link, "image": extract_image(entry), "source": feed_url, "source_name": host, "feed_category": category})
+        items.append({
+            "title": title,
+            "link": link,
+            "image": extract_image(entry),
+            "source": feed_url,
+            "source_name": host,
+            "feed_category": category,
+        })
     return items
 
 
@@ -78,7 +100,7 @@ def get_news(categories=None):
     all_news = []
     seen_links = set()
     if not feeds:
-        return []
+        return list(_CACHE.get("items") or [])
     workers = min(8, len(feeds))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_fetch_one, category, url) for category, url in feeds]

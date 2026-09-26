@@ -1,5 +1,6 @@
 import time
 
+from config import FORBIDDEN_COOLDOWN
 from rss_reader import get_news
 from storage import load_users, is_news_sent, mark_news_sent
 from users import update_last_send
@@ -10,6 +11,7 @@ from ai import translate_news
 
 
 CHECK_INTERVAL = 15
+_FORBIDDEN_UNTIL = {}
 
 
 def get_all_channels():
@@ -61,6 +63,10 @@ def build_message(news, channel):
 
 
 def can_send(channel):
+    channel_id = channel["id"]
+    until = _FORBIDDEN_UNTIL.get(channel_id, 0)
+    if until > time.time():
+        return False
     now = time.time()
     last_send = float(channel.get("last_send") or 0)
     interval_minutes = int(channel.get("interval") or 10)
@@ -73,6 +79,11 @@ def send_news_to_channel(channel, news):
     if channel.get("send_image", True) and image:
         return send_photo(channel["id"], image, message)
     return send_message(channel["id"], message)
+
+
+def mark_forbidden(channel_id):
+    _FORBIDDEN_UNTIL[channel_id] = time.time() + FORBIDDEN_COOLDOWN
+    print(f"⏰ {channel_id} به خاطر 403 برای {FORBIDDEN_COOLDOWN // 60} دقیقه نادیده شد. ربات باید ادمین کانال باشد.")
 
 
 def run():
@@ -111,10 +122,15 @@ def run():
                         result = send_news_to_channel(channel, latest_news)
                     except Exception as send_error:
                         print("❌ خطا در ارسال:", send_error)
-                        result = False
-                    if not result:
+                        result = {"ok": False, "forbidden": False}
+                    if not isinstance(result, dict):
+                        result = {"ok": bool(result), "forbidden": False}
+                    if result.get("forbidden"):
+                        mark_forbidden(channel["id"])
+                        break
+                    if not result.get("ok"):
                         print(f"❌ ارسال ناموفق بود: {channel['id']}")
-                        continue
+                        break
                     mark_news_sent(channel["id"], link)
                     update_last_send(channel["user_id"], channel["id"], time.time())
                     category_name = detect_category_advanced(
