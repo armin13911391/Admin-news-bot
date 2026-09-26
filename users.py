@@ -1,8 +1,36 @@
 import json
 import os
+import time
 from datetime import datetime
 
 from storage import users_path
+
+_LOCK_PATH = users_path() + ".lock"
+
+
+def _acquire_lock():
+    os.makedirs(os.path.dirname(users_path()) or ".", exist_ok=True)
+    for _ in range(50):
+        try:
+            fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(_LOCK_PATH) > 8:
+                    os.remove(_LOCK_PATH)
+                    continue
+            except OSError:
+                pass
+            time.sleep(0.05)
+    return False
+
+
+def _release_lock():
+    try:
+        os.remove(_LOCK_PATH)
+    except OSError:
+        pass
 
 
 def load_users():
@@ -27,8 +55,27 @@ def save_users(users):
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as file:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as file:
         json.dump(users, file, ensure_ascii=False, indent=4)
+    os.replace(tmp, path)
+
+
+def _patch_channel(user_id, channel_id, updates):
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id not in users:
+            return False
+        for channel in users[user_id].get("channels", []):
+            if channel.get("id") == channel_id:
+                channel.update(updates)
+                save_users(users)
+                return True
+        return False
+    finally:
+        _release_lock()
 
 
 def user_exists(user_id):
@@ -36,22 +83,26 @@ def user_exists(user_id):
 
 
 def add_user(user_id, first_name, username=None):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        users[user_id] = {
-            "first_name": first_name,
-            "username": username,
-            "join_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "wallet": 0,
-            "channels": [],
-            "subscription": {"type": None, "expire": None, "total_days": 0},
-            "free_claimed": False,
-            "invited_by": None,
-            "invite_count": 0,
-            "is_admin": False,
-        }
-        save_users(users)
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id not in users:
+            users[user_id] = {
+                "first_name": first_name,
+                "username": username,
+                "join_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "wallet": 0,
+                "channels": [],
+                "subscription": {"type": None, "expire": None, "total_days": 0},
+                "free_claimed": False,
+                "invited_by": None,
+                "invite_count": 0,
+                "is_admin": False,
+            }
+            save_users(users)
+    finally:
+        _release_lock()
 
 
 def get_user(user_id):
@@ -59,76 +110,83 @@ def get_user(user_id):
 
 
 def update_user(user_id, data):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id in users:
-        users[user_id].update(data)
-        save_users(users)
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id in users:
+            users[user_id].update(data)
+            save_users(users)
+    finally:
+        _release_lock()
 
 
 def add_channel(user_id, channel, max_channels=3):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
-    channels = users[user_id].setdefault("channels", [])
-    if len(channels) >= int(max_channels):
-        return False
-    for item in channels:
-        if item.get("id") == channel:
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id not in users:
             return False
-    channels.append({
-        "id": channel,
-        "status": "active",
-        "send_image": True,
-        "show_emoji": True,
-        "footer_text": "",
-        "interval": 10,
-        "last_send": 0,
-        "categories": ["همه"],
-    })
-    save_users(users)
-    return True
+        channels = users[user_id].setdefault("channels", [])
+        if len(channels) >= int(max_channels):
+            return False
+        for item in channels:
+            if item.get("id") == channel:
+                return False
+        channels.append({
+            "id": channel,
+            "status": "active",
+            "send_image": True,
+            "show_emoji": True,
+            "footer_text": "",
+            "interval": 10,
+            "last_send": 0,
+            "categories": ["همه"],
+        })
+        save_users(users)
+        return True
+    finally:
+        _release_lock()
 
 
 def delete_channel(user_id, channel_id):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id not in users:
+            return False
+        channels = users[user_id].get("channels", [])
+        for channel in list(channels):
+            if channel.get("id") == channel_id:
+                channels.remove(channel)
+                save_users(users)
+                return True
         return False
-    channels = users[user_id].get("channels", [])
-    for channel in list(channels):
-        if channel.get("id") == channel_id:
-            channels.remove(channel)
-            save_users(users)
-            return True
-    return False
+    finally:
+        _release_lock()
 
 
 def set_channel_status(user_id, channel_id, status):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel["status"] = status
-            save_users(users)
-            return True
-    return False
+    return _patch_channel(user_id, channel_id, {"status": status})
 
 
 def _toggle_flag(user_id, channel_id, key, default=True):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
+    _acquire_lock()
+    try:
+        users = load_users()
+        user_id = str(user_id)
+        if user_id not in users:
+            return None
+        for channel in users[user_id].get("channels", []):
+            if channel.get("id") == channel_id:
+                channel[key] = not channel.get(key, default)
+                save_users(users)
+                return channel[key]
         return None
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel[key] = not channel.get(key, default)
-            save_users(users)
-            return channel[key]
-    return None
+    finally:
+        _release_lock()
 
 
 def toggle_channel_image(user_id, channel_id):
@@ -140,54 +198,18 @@ def toggle_channel_emoji(user_id, channel_id):
 
 
 def update_footer_text(user_id, channel_id, text):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel["footer_text"] = text
-            save_users(users)
-            return True
-    return False
+    return _patch_channel(user_id, channel_id, {"footer_text": text})
 
 
 def update_categories(user_id, channel_id, categories):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
     if not categories:
         categories = ["همه"]
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel["categories"] = categories
-            save_users(users)
-            return True
-    return False
+    return _patch_channel(user_id, channel_id, {"categories": categories})
 
 
 def update_send_time(user_id, channel_id, interval):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel["interval"] = int(interval)
-            save_users(users)
-            return True
-    return False
+    return _patch_channel(user_id, channel_id, {"interval": int(interval)})
 
 
 def update_last_send(user_id, channel_id, last_send):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
-    for channel in users[user_id].get("channels", []):
-        if channel.get("id") == channel_id:
-            channel["last_send"] = last_send
-            save_users(users)
-            return True
-    return False
+    return _patch_channel(user_id, channel_id, {"last_send": last_send})
