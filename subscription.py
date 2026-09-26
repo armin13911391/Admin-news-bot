@@ -10,7 +10,7 @@ except Exception:
     TEHRAN = None
 
 from storage import users_path
-from users import get_user, load_users, save_users
+from users import get_user, update_user
 
 
 PLANS = {
@@ -126,17 +126,14 @@ def max_channels_for(user_id):
 
 
 def activate_subscription(user_id, kind, days):
-    users = load_users()
-    user_id = str(user_id)
-    if user_id not in users:
-        return False
     expire = today_tehran() + timedelta(days=int(days))
-    users[user_id]["subscription"] = {
-        "type": kind,
-        "expire": expire.isoformat(),
-        "total_days": int(days),
-    }
-    save_users(users)
+    update_user(user_id, {
+        "subscription": {
+            "type": kind,
+            "expire": expire.isoformat(),
+            "total_days": int(days),
+        }
+    })
     return True
 
 
