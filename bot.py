@@ -13,6 +13,7 @@ import handlers.add_channel
 import handlers.channel_settings
 import handlers.footer_text
 import handlers.admin_panel
+import handlers.admin_complete
 import handlers.admin_users
 import handlers.admin_channels
 import handlers.admin_system
