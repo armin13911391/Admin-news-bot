@@ -1,11 +1,9 @@
 # ==========================
-# AutoNewsBot Config v2.0
+# AutoNewsBot Config v2.1
 # ==========================
 
 import os
 
-# توکن را در متغیر محیطی BALE_BOT_TOKEN بگذار.
-# مقدار زیر فقط برای سازگاری با نسخه فعلی است؛ ریپوی عمومی توکن را لو می‌دهد.
 BOT_TOKEN = os.getenv(
     "BALE_BOT_TOKEN",
     "1159197217:ZwrWy4kXoTdu7hSMHMWjjaQKm-uM1qlUCYs",
@@ -18,89 +16,89 @@ MAX_SENT_NEWS = 5000
 CHECK_EMPTY_INTERVAL = 60
 SEND_INTERVALS = [300, 600]
 MAX_CHANNELS = 3
+RSS_CACHE_SECONDS = 45
 
-RSS_FEEDS = [
-    "https://www.tasnimnews.com/fa/rss/feed/0/7/0",
-    "https://www.mehrnews.com/rss",
-    "https://www.isna.ir/rss",
-    "https://www.irna.ir/rss",
-    "https://www.farsnews.ir/rss",
-    "https://www.yjc.ir/fa/rss",
-    "https://www.ilna.ir/rss",
-    "https://www.iribnews.ir/fa/rss",
-    "https://defapress.ir/fa/rss",
-    "https://nournews.ir/fa/rss",
-    "https://www.eghtesadnews.com/rss",
-    "https://www.tgju.org/rss",
-    "https://www.varzesh3.com/rss",
-    "https://www.khabarvarzeshi.com/rss",
-    "https://www.zoomit.ir/feed/",
-    "https://www.irna.ir/rss/tp/32",
-]
+CATEGORY_FEEDS = {
+    "ورزش": [
+        "https://www.varzesh3.com/rss",
+        "https://www.khabarvarzeshi.com/rss",
+        "https://www.mehrnews.com/rss/tp/9",
+        "https://www.isna.ir/rss/tp/24",
+    ],
+    "جنگ": [
+        "https://defapress.ir/fa/rss",
+        "https://nournews.ir/fa/rss",
+        "https://www.mehrnews.com/rss/tp/39",
+        "https://www.isna.ir/rss/tp/407",
+        "https://www.irna.ir/rss/tp/9",
+    ],
+    "آب‌وهوا": [
+        "https://www.isna.ir/rss/tp/62",
+        "https://www.irna.ir/rss/tp/32",
+    ],
+    "اقتصاد": [
+        "https://www.tgju.org/rss",
+        "https://www.eghtesadnews.com/rss",
+        "https://www.mehrnews.com/rss/tp/20",
+        "https://www.irna.ir/rss/tp/20",
+    ],
+    "فناوری": [
+        "https://www.zoomit.ir/feed/",
+        "https://www.isna.ir/rss/tp/41",
+    ],
+    "سیاسی": [
+        "https://www.mehrnews.com/rss/tp/7",
+        "https://www.isna.ir/rss/tp/152",
+        "https://www.irna.ir/rss/tp/5",
+    ],
+}
 
+RSS_FEEDS = []
+for _feeds in CATEGORY_FEEDS.values():
+    for _url in _feeds:
+        if _url not in RSS_FEEDS:
+            RSS_FEEDS.append(_url)
 
 CATEGORY_RULES = {
     "ورزش": {
-        "sources": ["varzesh3", "khabarvarzeshi"],
-        "keywords": [
-            "فوتبال", "والیبال", "بسکتبال", "لیگ برتر", "لیگ",
-            "جام جهانی", "بازیکن", "مربی", "مسابقه", "قهرمانی",
-            "استقلال", "پرسپولیس", "ورزش", "گل زد", "داور", "تیم ملی",
-        ],
-        "negative": ["جنگ", "حمله نظامی", "موشک", "ارتش", "هواشناسی", "بارش"],
+        "sources": ["varzesh3", "khabarvarzeshi", "rss/tp/9", "rss/tp/24"],
+        "keywords": ["فوتبال", "والیبال", "بسکتبال", "لیگ برتر", "لیگ", "جام جهانی", "بازیکن", "مربی", "قهرمانی", "استقلال", "پرسپولیس", "ورزش", "تیم ملی", "داور"],
+        "negative": ["موشک", "پهپاد", "هواشناسی", "بارش باران"],
     },
     "اقتصاد": {
-        "sources": ["tgju", "eghtesadnews"],
-        "keywords": [
-            "دلار", "طلا", "سکه", "بورس", "ارز", "اقتصاد", "بازار",
-            "تورم", "نرخ ارز", "بانک مرکزی", "نفت",
-        ],
-        "negative": ["فوتبال", "مسابقه ورزشی", "جنگنده", "هواشناسی"],
+        "sources": ["tgju", "eghtesadnews", "rss/tp/20"],
+        "keywords": ["دلار", "طلا", "سکه", "بورس", "ارز", "اقتصاد", "تورم", "نرخ ارز", "بانک مرکزی", "نفت"],
+        "negative": ["فوتبال", "هواشناسی", "جنگنده"],
     },
     "جنگ": {
-        "sources": ["defapress", "nournews"],
-        "keywords": [
-            "حمله نظامی", "حمله موشکی", "موشک", "پهپاد", "ارتش",
-            "نیروی نظامی", "عملیات نظامی", "درگیری مسلحانه",
-            "جنگنده", "تجاوز نظامی", "شهادت", "بمباران", "جبهه جنگ",
-        ],
-        "negative": ["آتش سوزی جنگل", "جنگل", "ورزش", "مسابقه", "هواشناسی", "بارش"],
+        "sources": ["defapress", "nournews", "rss/tp/39", "rss/tp/407", "rss/tp/9"],
+        "keywords": ["حمله نظامی", "حمله موشکی", "موشک", "پهپاد", "ارتش", "عملیات نظامی", "درگیری مسلحانه", "جنگنده", "تجاوز نظامی", "شهادت", "بمباران"],
+        "negative": ["هواشناسی", "بارش", "فوتبال", "لیگ برتر"],
     },
     "فناوری": {
-        "sources": ["zoomit"],
-        "keywords": [
-            "گوشی", "موبایل", "لپ تاپ", "هوش مصنوعی", "تکنولوژی",
-            "اینترنت", "نرم افزار", "اپلیکیشن", "استارتاپ",
-        ],
-        "negative": ["جنگ", "موشک", "فوتبال"],
+        "sources": ["zoomit", "rss/tp/41"],
+        "keywords": ["گوشی", "موبایل", "لپ تاپ", "هوش مصنوعی", "تکنولوژی", "اینترنت", "نرم افزار", "اپلیکیشن", "استارتاپ"],
+        "negative": ["موشک", "فوتبال"],
     },
     "سیاسی": {
-        "sources": [],
-        "keywords": [
-            "مجلس", "دولت", "وزیر", "هیئت دولت", "رئیس جمهور",
-            "رئیس‌جمهور", "انتخابات", "نماینده مجلس",
-            "سیاست خارجی", "مذاکره", "مصوبه", "لایحه",
-        ],
+        "sources": ["rss/tp/7", "rss/tp/152", "rss/tp/5"],
+        "keywords": ["مجلس", "دولت", "وزیر", "هیئت دولت", "رئیس جمهور", "رئیس‌جمهور", "انتخابات", "نماینده مجلس", "سیاست خارجی", "مصوبه", "لایحه"],
         "negative": ["فوتبال", "هواشناسی", "موشک"],
     },
     "آب‌وهوا": {
-        "sources": ["irimo", "weather"],
-        "keywords": [
-            "هواشناسی", "پیش بینی هوا", "پیش‌بینی هوا", "وضعیت هوا",
-            "بارش باران", "بارش برف", "سامانه بارشی", "هشدار هواشناسی",
-            "هشدار زرد", "هشدار نارنجی", "هشدار قرمز", "وزش باد شدید",
-            "کاهش دما", "افزایش دما", "گرد و غبار", "آلودگی هوا",
-            "رگبار", "تگرگ", "طوفان", "سیلاب",
-        ],
+        "sources": ["irimo", "rss/tp/62", "rss/tp/32"],
+        "keywords": ["هواشناسی", "پیش بینی هوا", "پیش‌بینی هوا", "وضعیت هوا", "بارش باران", "بارش برف", "سامانه بارشی", "هشدار هواشناسی", "هشدار زرد", "هشدار نارنجی", "هشدار قرمز", "وزش باد شدید", "کاهش دما", "افزایش دما", "گرد و غبار", "آلودگی هوا", "رگبار", "تگرگ", "طوفان", "سیلاب"],
         "negative": ["موشک", "پهپاد", "فوتبال", "دلار", "بورس"],
+        "require_iran": True,
     },
 }
 
-FORCE_JOIN_ENABLED = True
-
-FORCE_JOIN_CHANNELS = [
-    {
-        "id": 5156805259,
-        "username": "@adminbots_ir",
-    }
+IRAN_HINTS = [
+    "ایران", "کشور", "استان", "تهران", "مشهد", "اصفهان", "شیراز",
+    "تبریز", "اهواز", "کرج", "قم", "کرمان", "گیلان", "مازندران",
+    "آذربایجان", "خراسان", "خوزستان", "سیستان", "بلوچستان",
+    "هواشناسی کشور", "سازمان هواشناسی",
 ]
+
+FORCE_JOIN_ENABLED = True
+FORCE_JOIN_CHANNELS = [{"id": 5156805259, "username": "@adminbots_ir"}]
