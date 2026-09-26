@@ -50,11 +50,11 @@ def build_message(news, channel):
         title = translate_news(title)
     except Exception:
         pass
+    category = news.get("feed_category") or detect_category_advanced(
+        title, news.get("source", ""), news.get("feed_category")
+    )
     if channel.get("show_emoji", True):
-        try:
-            title = add_emoji(title)
-        except Exception:
-            pass
+        title = add_emoji(title, category)
     message = title
     footer = (channel.get("footer_text") or "").strip()
     if footer:
@@ -83,7 +83,7 @@ def send_news_to_channel(channel, news):
 
 def mark_forbidden(channel_id):
     _FORBIDDEN_UNTIL[channel_id] = time.time() + FORBIDDEN_COOLDOWN
-    print(f"⏰ {channel_id} به خاطر 403 برای {FORBIDDEN_COOLDOWN // 60} دقیقه نادیده شد. ربات باید ادمین کانال باشد.")
+    print(f"⏰ {channel_id} به خاطر 403 برای {FORBIDDEN_COOLDOWN // 60} دقیقه نادیده شد.")
 
 
 def run():
@@ -133,14 +133,9 @@ def run():
                         break
                     mark_news_sent(channel["id"], link)
                     update_last_send(channel["user_id"], channel["id"], time.time())
-                    category_name = detect_category_advanced(
-                        title,
-                        latest_news.get("source", ""),
-                        latest_news.get("feed_category"),
-                    )
                     print(
                         f"✅ ارسال شد به {channel['id']}\n"
-                        f"📂 دسته خبر: {category_name}\n"
+                        f"📂 دسته خبر: {latest_news.get('feed_category')}\n"
                         f"🏷 فیلتر کانال: {', '.join(categories)}\n"
                         f"⏰ ارسال بعدی: {channel.get('interval', 10)} دقیقه دیگر"
                     )
