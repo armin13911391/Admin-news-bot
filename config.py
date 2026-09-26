@@ -1,5 +1,5 @@
 # ==========================
-# AutoNewsBot Config v2.3
+# AutoNewsBot Config v2.4
 # ==========================
 
 import os
@@ -18,8 +18,8 @@ SEND_INTERVALS = [300, 600]
 MAX_CHANNELS = 3
 RSS_CACHE_SECONDS = 45
 FORBIDDEN_COOLDOWN = 1800
+MAX_NEWS_AGE_SECONDS = 30 * 60
 
-# فقط فید بخش همان موضوع
 CATEGORY_FEEDS = {
     "ورزش": [
         "https://www.mehrnews.com/rss/tp/9",
