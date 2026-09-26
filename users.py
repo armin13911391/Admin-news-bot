@@ -68,8 +68,9 @@ def _patch_channel(user_id, channel_id, updates):
         user_id = str(user_id)
         if user_id not in users:
             return False
+        target = str(channel_id or "").lower()
         for channel in users[user_id].get("channels", []):
-            if channel.get("id") == channel_id:
+            if str(channel.get("id") or "").lower() == target:
                 channel.update(updates)
                 save_users(users)
                 return True
@@ -101,6 +102,11 @@ def add_user(user_id, first_name, username=None):
                 "is_admin": False,
             }
             save_users(users)
+        else:
+            users[user_id]["first_name"] = first_name or users[user_id].get("first_name")
+            if username:
+                users[user_id]["username"] = username
+            save_users(users)
     finally:
         _release_lock()
 
@@ -122,6 +128,8 @@ def update_user(user_id, data):
 
 
 def add_channel(user_id, channel, max_channels=3):
+    from channel_utils import normalize_channel_id
+    channel = normalize_channel_id(channel) or channel
     _acquire_lock()
     try:
         users = load_users()
@@ -129,10 +137,10 @@ def add_channel(user_id, channel, max_channels=3):
         if user_id not in users:
             return False
         channels = users[user_id].setdefault("channels", [])
-        if len(channels) >= int(max_channels):
+        if len(channels) >= int(max_channels or 0):
             return False
         for item in channels:
-            if item.get("id") == channel:
+            if str(item.get("id") or "").lower() == str(channel).lower():
                 return False
         channels.append({
             "id": channel,
@@ -143,6 +151,8 @@ def add_channel(user_id, channel, max_channels=3):
             "interval": 10,
             "last_send": 0,
             "categories": ["همه"],
+            "comment_on": False,
+            "comment_text": "",
         })
         save_users(users)
         return True
@@ -158,12 +168,13 @@ def delete_channel(user_id, channel_id):
         if user_id not in users:
             return False
         channels = users[user_id].get("channels", [])
-        for channel in list(channels):
-            if channel.get("id") == channel_id:
-                channels.remove(channel)
-                save_users(users)
-                return True
-        return False
+        target = str(channel_id or "").lower()
+        keep = [item for item in channels if str(item.get("id") or "").lower() != target]
+        if len(keep) == len(channels):
+            return False
+        users[user_id]["channels"] = keep
+        save_users(users)
+        return True
     finally:
         _release_lock()
 
@@ -177,10 +188,11 @@ def _toggle_flag(user_id, channel_id, key, default=True):
     try:
         users = load_users()
         user_id = str(user_id)
+        target = str(channel_id or "").lower()
         if user_id not in users:
             return None
         for channel in users[user_id].get("channels", []):
-            if channel.get("id") == channel_id:
+            if str(channel.get("id") or "").lower() == target:
                 channel[key] = not channel.get(key, default)
                 save_users(users)
                 return channel[key]
@@ -208,7 +220,12 @@ def update_categories(user_id, channel_id, categories):
 
 
 def update_send_time(user_id, channel_id, interval):
-    return _patch_channel(user_id, channel_id, {"interval": int(interval)})
+    try:
+        interval = int(interval)
+    except Exception:
+        return False
+    interval = max(1, min(interval, 180))
+    return _patch_channel(user_id, channel_id, {"interval": interval})
 
 
 def update_last_send(user_id, channel_id, last_send):
