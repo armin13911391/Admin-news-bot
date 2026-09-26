@@ -1,36 +1,21 @@
-from config import (
-    FORCE_JOIN_ENABLED,
-    FORCE_JOIN_CHANNELS
-)
+from channel_checker import get_chat_member
+from admin_store import load_join_channels
 
 
 def is_force_join_enabled():
-    return FORCE_JOIN_ENABLED
+    return bool(load_join_channels())
 
 
 def get_force_join_channels():
-    return FORCE_JOIN_CHANNELS
-    
-from channel_checker import get_chat_member
+    return load_join_channels()
 
 
 def is_user_joined(user_id):
-
-    if not FORCE_JOIN_ENABLED:
+    channels = load_join_channels()
+    if not channels:
         return True
-
-    for channel in FORCE_JOIN_CHANNELS:
-
-        status = get_chat_member(
-            channel["id"],
-            user_id
-        )
-
-        if status not in (
-            "creator",
-            "administrator",
-            "member"
-        ):
+    for channel in channels:
+        status = get_chat_member(channel.get("id") or channel.get("username"), user_id)
+        if status not in ("creator", "administrator", "member"):
             return False
-
     return True
