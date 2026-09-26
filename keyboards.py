@@ -1,6 +1,6 @@
 # ==========================
 # AutoNewsBot Keyboards
-# Version 2.8.0
+# Version 2.9.0
 # ==========================
 
 from bale import (
@@ -10,31 +10,23 @@ from bale import (
     InlineKeyboardButton,
 )
 
-
 BTN_PROFILE = "👤 پروفایل"
 BTN_WALLET = "💰 کیف پول"
-
 BTN_CHANNEL = "📢 کانال‌های من"
 BTN_ADD_CHANNEL = "➕ افزودن کانال جدید"
 BTN_REFERRAL = "🎁 دعوت دوستان"
-
 BTN_SUBSCRIPTION = "💳 خرید اشتراک"
 BTN_SUPPORT = "📞 پشتیبانی"
-
 BTN_ADMIN = "🛠 پنل مدیریت"
-
 BTN_BACK = "🔙 بازگشت"
 BTN_HOME = "🏠 منوی اصلی"
 BTN_CANCEL = "❌ انصراف"
-
 BTN_ADMIN_STATS_USERS = "📊 آمار کاربران"
 BTN_ADMIN_STATS_CHANNELS = "📢 آمار کانال‌ها"
 BTN_ADMIN_STATS_NEWS = "📰 آمار اخبار"
-
 BTN_ADMIN_USERS = "👤 مدیریت کاربران"
 BTN_ADMIN_CHANNELS = "📺 مدیریت کانال‌ها"
 BTN_ADMIN_ADMINS = "👮 ادمین‌ها"
-
 BTN_ADMIN_BROADCAST = "📨 ارسال همگانی"
 BTN_ADMIN_SETTINGS = "⚙️ تنظیمات ربات"
 BTN_ADMIN_JOIN = "🔒 جوین اجباری"
@@ -68,24 +60,18 @@ def channel_settings_bottom_menu():
 def channel_inline_menu(channels):
     keyboard = InlineKeyboardMarkup()
     for channel in channels:
-        keyboard.add(
-            InlineKeyboardButton(
-                f"⚙️ {channel['id']}",
-                callback_data=f"channel_{channel['id']}",
-            )
-        )
+        keyboard.add(InlineKeyboardButton(f"⚙️ {channel['id']}", callback_data=f"channel_{channel['id']}"))
     return keyboard
 
 
 def channel_settings_menu(channel_id, send_image=True, show_emoji=True):
     image_text = "🖼 عکس: 🟢 روشن" if send_image else "🖼 عکس: 🔴 خاموش"
     emoji_text = "😀 ایموجی: 🟢 روشن" if show_emoji else "😀 ایموجی: 🔴 خاموش"
-
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(image_text, callback_data=f"img_{channel_id}"), row=1)
     keyboard.add(InlineKeyboardButton(emoji_text, callback_data=f"emoji_{channel_id}"), row=1)
-    keyboard.add(InlineKeyboardButton("⏱ زمان ارسال", callback_data=f"time_{channel_id}"), row=2)
-    keyboard.add(InlineKeyboardButton("🏷 دسته‌بندی", callback_data=f"cat_{channel_id}"), row=2)
+    keyboard.add(InlineKeyboardButton("⏱ فاصله ارسال", callback_data=f"time_{channel_id}"), row=2)
+    keyboard.add(InlineKeyboardButton("🏷 دسته‌بندی خبر", callback_data=f"cat_{channel_id}"), row=2)
     keyboard.add(InlineKeyboardButton("✏️ متن پایین خبر", callback_data=f"link_{channel_id}"), row=3)
     keyboard.add(InlineKeyboardButton("🗑 حذف کانال", callback_data=f"delete_{channel_id}"), row=3)
     return keyboard
@@ -93,8 +79,8 @@ def channel_settings_menu(channel_id, send_image=True, show_emoji=True):
 
 def delete_channel_menu(channel_id):
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("✅ بله", callback_data=f"yesdel_{channel_id}"), row=1)
-    keyboard.add(InlineKeyboardButton("❌ خیر", callback_data=f"nodel_{channel_id}"), row=1)
+    keyboard.add(InlineKeyboardButton("✅ بله، حذف شود", callback_data=f"yesdel_{channel_id}"), row=1)
+    keyboard.add(InlineKeyboardButton("❌ انصراف", callback_data=f"nodel_{channel_id}"), row=1)
     return keyboard
 
 
@@ -134,16 +120,19 @@ def footer_delete_menu():
     return keyboard
 
 
-def category_menu():
+def category_menu(selected=None):
+    selected = selected or []
+    def label(active, text):
+        return f"✅ {text}" if active else text
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("🚨 جنگ", callback_data="cat_select_جنگ"), row=1)
-    keyboard.add(InlineKeyboardButton("🌬 آب‌وهوا", callback_data="cat_select_آب‌وهوا"), row=1)
-    keyboard.add(InlineKeyboardButton("💵 اقتصاد", callback_data="cat_select_اقتصاد"), row=2)
-    keyboard.add(InlineKeyboardButton("🌐 فناوری", callback_data="cat_select_فناوری"), row=2)
-    keyboard.add(InlineKeyboardButton("⚽ ورزش", callback_data="cat_select_ورزش"), row=3)
-    keyboard.add(InlineKeyboardButton("🏛 سیاسی", callback_data="cat_select_سیاسی"), row=3)
-    keyboard.add(InlineKeyboardButton("🌍 همه دسته‌ها", callback_data="cat_select_همه"), row=4)
-    keyboard.add(InlineKeyboardButton("💾 ذخیره", callback_data="cat_save"), row=5)
+    keyboard.add(InlineKeyboardButton(label("جنگ" in selected, "🚨 جنگ"), callback_data="cat_select_جنگ"), row=1)
+    keyboard.add(InlineKeyboardButton(label("آب‌وهوا" in selected, "🌬 آب‌وهوا"), callback_data="cat_select_آب‌وهوا"), row=1)
+    keyboard.add(InlineKeyboardButton(label("اقتصاد" in selected, "💵 اقتصاد"), callback_data="cat_select_اقتصاد"), row=2)
+    keyboard.add(InlineKeyboardButton(label("فناوری" in selected, "💻 فناوری"), callback_data="cat_select_فناوری"), row=2)
+    keyboard.add(InlineKeyboardButton(label("ورزش" in selected, "⚽ ورزش"), callback_data="cat_select_ورزش"), row=3)
+    keyboard.add(InlineKeyboardButton(label("سیاسی" in selected, "🏛 سیاسی"), callback_data="cat_select_سیاسی"), row=3)
+    keyboard.add(InlineKeyboardButton(label("همه" in selected, "🌍 همه دسته‌ها"), callback_data="cat_select_همه"), row=4)
+    keyboard.add(InlineKeyboardButton("💾 ذخیره دسته‌ها", callback_data="cat_save"), row=5)
     return keyboard
 
 
