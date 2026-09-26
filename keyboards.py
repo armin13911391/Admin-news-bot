@@ -5,7 +5,7 @@ from bale import (
     InlineKeyboardButton,
 )
 
-from subscription import FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES, PLANS
+from subscription import PLANS
 
 BTN_PROFILE = "👤 پروفایل"
 BTN_WALLET = "💰 کیف پول"
@@ -44,11 +44,12 @@ def home_inline_menu(show_free=True):
     keyboard.add(InlineKeyboardButton("➕ افزودن کانال", callback_data="m_add"), row=1)
     keyboard.add(InlineKeyboardButton("⏸️ توقف ارسال", callback_data="m_pause"), row=2)
     keyboard.add(InlineKeyboardButton("▶️ شروع ارسال", callback_data="m_resume"), row=2)
-    keyboard.add(InlineKeyboardButton("💳 خرید اشتراک", callback_data="m_buy"), row=3)
-    keyboard.add(InlineKeyboardButton("🔑 ورود کد لایسنس", callback_data="m_license"), row=4)
+    keyboard.add(InlineKeyboardButton("📊 آمار کانال", callback_data="m_stats"), row=3)
+    keyboard.add(InlineKeyboardButton("💳 خرید اشتراک", callback_data="m_buy"), row=4)
+    keyboard.add(InlineKeyboardButton("🔑 ورود کد لایسنس", callback_data="m_license"), row=5)
     if show_free:
-        keyboard.add(InlineKeyboardButton("🎁 اشتراک رایگان ۳ روزه", callback_data="m_free"), row=5)
-    keyboard.add(InlineKeyboardButton("📞 پشتیبانی", callback_data="m_support"), row=6)
+        keyboard.add(InlineKeyboardButton("🎁 اشتراک رایگان ۳ روزه", callback_data="m_free"), row=6)
+    keyboard.add(InlineKeyboardButton("📞 پشتیبانی", callback_data="m_support"), row=7)
     return keyboard
 
 
