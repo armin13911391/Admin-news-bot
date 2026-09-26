@@ -4,14 +4,15 @@ from config import FORBIDDEN_COOLDOWN
 from rss_reader import get_news, is_fresh
 from storage import load_users, is_news_sent, mark_news_sent
 from users import update_last_send
-from sender import send_message, send_photo, send_comment
+from sender import send_message, send_photo
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
 from analytics import record_message, snapshot_members
+from commenter import extract_message_id, post_comment, remember_post
 
 
-CHECK_INTERVAL = 20
+CHECK_INTERVAL = 15
 _FORBIDDEN_UNTIL = {}
 _LAST_EMPTY = 0
 _LAST_SNAP = 0
@@ -90,17 +91,14 @@ def maybe_comment(channel, result):
     if not channel.get("comment_on"):
         return
     text = (channel.get("comment_text") or "").strip()
-    message_id = result.get("message_id") if isinstance(result, dict) else None
-    if not text or not message_id:
+    if not text:
         return
-    try:
-        comment = send_comment(channel["id"], text, message_id)
-        if comment.get("ok"):
-            print(f"💬 کامنت روی {channel['id']} نوشته شد")
-        else:
-            print(f"⚠️ کامنت {channel['id']} نرفت ({comment.get('description', '')[:80]})")
-    except Exception as error:
-        print("comment error:", error)
+    message_id = extract_message_id(result)
+    remember_post(channel.get("user_id"), channel["id"], message_id)
+    time.sleep(0.4)
+    comment = post_comment(channel["id"], text, message_id)
+    if not comment.get("ok"):
+        print(f"⚠️ کامنت {channel['id']} نرفت: {comment.get('description', '')[:120]}")
 
 
 def mark_forbidden(channel_id):
