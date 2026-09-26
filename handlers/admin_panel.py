@@ -1,5 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from client import bot
@@ -17,7 +15,7 @@ from admin_store import (
     save_join_channels,
     resolve_channel,
 )
-from sender import deliver_as_is
+from broadcast_util import run_broadcast, is_forwarded, has_media
 from handlers.home import home_components, show_home
 
 
@@ -141,10 +139,7 @@ def channels_menu(page=0):
     row = 1
     for index, item in enumerate(items[start:start + per_page], start=start):
         status = "🟢" if item.get("status") == "active" else "🔴"
-        keyboard.add(
-            InlineKeyboardButton(f"{status} {item['id']}", callback_data=f"ad_ch_{index}"),
-            row=row,
-        )
+        keyboard.add(InlineKeyboardButton(f"{status} {item['id']}", callback_data=f"ad_ch_{index}"), row=row)
         row += 1
     nav = []
     if page > 0:
@@ -182,33 +177,6 @@ def channel_detail(index):
     return text, keyboard
 
 
-def broadcast_targets(kind):
-    if kind == "pv":
-        return [int(user_id) for user_id in load_users().keys() if str(user_id).lstrip("-").isdigit()]
-    return [item["id"] for item in all_registered_channels()]
-
-
-def run_broadcast(kind, from_chat, message_id, fallback_text):
-    targets = broadcast_targets(kind)
-    ok = 0
-    fail = 0
-    if not targets:
-        return 0, 0
-    workers = min(20, max(4, len(targets)))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [
-            pool.submit(deliver_as_is, target, from_chat, message_id, fallback_text)
-            for target in targets
-        ]
-        for future in as_completed(futures):
-            result = future.result() or {}
-            if result.get("ok"):
-                ok += 1
-            else:
-                fail += 1
-    return ok, fail
-
-
 @bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
@@ -221,11 +189,7 @@ async def on_callback(callback: CallbackQuery):
         if is_user_joined(user_id):
             await show_home(callback, user_id)
         else:
-            await edit_message(
-                callback,
-                "🔒 هنوز عضو همه کانال‌ها نشدی.\nعضو شو و دوباره بزن.",
-                force_join_keyboard(),
-            )
+            await edit_message(callback, "🔒 هنوز عضو همه کانال‌ها نشدی.\nعضو شو و دوباره بزن.", force_join_keyboard())
         return
     if not data.startswith("ad_"):
         return
@@ -252,7 +216,7 @@ async def on_callback(callback: CallbackQuery):
         where = "پیوی کاربرا" if kind == "pv" else "کانال‌های ربات"
         await edit_message(
             callback,
-            f"📤 همگانی {where}\n\nهمین جا بنر، عکس یا متن را بفرست.\nربات همان را به‌صورت فوروارد ارسال می‌کند.",
+            f"📤 همگانی {where}\n\nمتن عادی را بفرست تا همان روز عادی برود.\nاگر پیام فورواردشده باشد، همان طور فوروارد می‌شود.",
             back_admin(),
         )
         return
@@ -261,7 +225,6 @@ async def on_callback(callback: CallbackQuery):
         clear_state(user_id)
         await edit_message(callback, join_text(), join_menu())
         return
-
     if data == "ad_join_add":
         if len(load_join_channels()) >= 3:
             await edit_message(callback, "⚠️ بیشتر از ۳ کانال نمی‌شود.", join_menu())
@@ -269,43 +232,34 @@ async def on_callback(callback: CallbackQuery):
         set_state(user_id, "admin_join_add", {})
         await edit_message(callback, "➕ یوزرنیم کانال را بفرست.\nمثال: @mychannel", back_admin())
         return
-
     if data == "ad_join_del":
         set_state(user_id, "admin_join_del", {})
-        await edit_message(callback, "🗑 یوزرنیم کانال را بفرست تا حذف شود.\nمثال: @mychannel", back_admin())
+        await edit_message(callback, "🗑 یوزرنیم کانال را بفرست تا حذف شود.", back_admin())
         return
-
     if data == "ad_admins":
         clear_state(user_id)
         await edit_message(callback, admins_text(), admins_menu())
         return
-
     if data == "ad_adm_add":
         set_state(user_id, "admin_add", {})
         await edit_message(callback, "➕ ایدی عددی کاربر را بفرست تا ادمین شود.", back_admin())
         return
-
     if data == "ad_adm_del":
         set_state(user_id, "admin_del", {})
         await edit_message(callback, "🗑 ایدی عددی ادمین را بفرست تا حذف شود.", back_admin())
         return
-
     if data == "ad_news":
         await edit_message(callback, news_today_text(), back_admin())
         return
-
     if data == "ad_chs" or data.startswith("ad_chs_"):
         page = int(data.replace("ad_chs_", "")) if data.startswith("ad_chs_") and data[7:].isdigit() else 0
         text, keyboard = channels_menu(page)
         await edit_message(callback, text, keyboard)
         return
-
     if data.startswith("ad_ch_"):
-        index = int(data.replace("ad_ch_", ""))
-        text, keyboard = channel_detail(index)
+        text, keyboard = channel_detail(int(data.replace("ad_ch_", "")))
         await edit_message(callback, text, keyboard)
         return
-
     if data.startswith("ad_pause_") or data.startswith("ad_run_"):
         pause = data.startswith("ad_pause_")
         index = int(data.split("_")[-1])
@@ -318,7 +272,6 @@ async def on_callback(callback: CallbackQuery):
         text, keyboard = channel_detail(index)
         prefix = "⏸️ متوقف شد" if pause else "▶️ ران شد"
         await edit_message(callback, prefix + "\n\n" + text, keyboard)
-        return
 
 
 @bot.event
@@ -335,12 +288,16 @@ async def on_message(message: Message):
     if name == "admin_bc":
         kind = (state.get("data") or {}).get("kind") or "pv"
         mid = getattr(message, "message_id", None) or getattr(message, "id", None)
-        ok, fail = run_broadcast(kind, user_id, mid, text)
-        clear_state(user_id)
-        await message.reply(
-            f"✅ همگانی تمام شد\n\n✔️ موفق: {ok}\n❌ ناموفق: {fail}",
-            components=admin_menu(),
+        ok, fail = run_broadcast(
+            kind,
+            user_id,
+            mid,
+            text,
+            forwarded=is_forwarded(message),
+            media=has_media(message),
         )
+        clear_state(user_id)
+        await message.reply(f"✅ همگانی تمام شد\n\n✔️ موفق: {ok}\n❌ ناموفق: {fail}", components=admin_menu())
         return
 
     if name == "admin_join_add":
