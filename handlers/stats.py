@@ -1,15 +1,11 @@
-import os
-
 from bale import CallbackQuery
 
 from client import bot
 from ui import edit_message
 from users import get_user
-from keyboards import channel_pick_menu
+from keyboards import channel_pick_menu, home_inline_menu
 from subscription import has_subscription
 from analytics import build_report
-from chart_builder import render_stats_image, render_stats_text
-from sender import send_photo_file, send_message, inline_keyboard
 from handlers.home import home_components
 
 
@@ -17,22 +13,36 @@ def _need_sub():
     return "🔒 اول اشتراک را فعال کن تا آمار کانال را ببینی."
 
 
-async def send_channel_stats(user_id, channel_id, callback=None):
-    report = build_report(channel_id)
-    text = render_stats_text(report)
-    path = os.path.join("data", "charts", f"{str(channel_id).replace('@', '')}.png")
-    image_path = None
+def stats_text(report):
+    clock = report["now"].strftime("%H:%M")
+    lines = [
+        f"📊 آمار {report['channel_id']}",
+        f"⏰ از ۰۰:۰۰ تا {clock}",
+        "━━━━━━━━━━━━━━",
+        f"👥 کاربرای امروز: {report['users_today']}",
+        f"📅 ۷ روز گذشته: {report['users_7']}",
+        f"📆 ۳۰ روز گذشته: {report['users_30']}",
+        f"📢 کل اعضا: {report['members']}",
+        f"💬 پیام‌های امروز ربات: {report['messages_today']}",
+        "━━━━━━━━━━━━━━",
+        "📈 پیام هر ساعت:",
+    ]
+    max_value = max(report["hourly"] or [0]) or 1
+    for hour, value in zip(report["hours"], report["hourly"]):
+        blocks = int(round((value / max_value) * 8)) if value else 0
+        bar = "█" * blocks or "·"
+        lines.append(f"{hour:02d}:00  {bar}  {value}")
+    return "\n".join(lines)
+
+
+async def send_channel_stats(user_id, channel_id, callback):
     try:
-        image_path = render_stats_image(report, path)
+        report = build_report(channel_id)
+        text = stats_text(report)
     except Exception as error:
-        print("stats image error:", error)
-    markup = inline_keyboard([[("🏠 منوی اصلی", "m_home")]])
-    if image_path:
-        send_photo_file(user_id, image_path, text, markup)
-    else:
-        send_message(user_id, text, markup)
-    if callback:
-        await edit_message(callback, f"📊 آمار {channel_id} آماده شد.", home_components(user_id))
+        print("stats error:", error)
+        text = f"⚠️ آمار {channel_id} در حال حاضر درست نشد.\nربات باید در کانال ادمین باشد."
+    await edit_message(callback, text, home_components(user_id))
 
 
 @bot.event
