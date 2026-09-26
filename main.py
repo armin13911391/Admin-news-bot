@@ -2,7 +2,7 @@ import time
 
 from config import FORBIDDEN_COOLDOWN
 from rss_reader import get_news, is_fresh
-from storage import load_users, is_news_sent, mark_news_sent
+from storage import is_news_sent, mark_news_sent
 from users import update_last_send
 from sender import send_message, send_photo
 from utils import add_emoji
@@ -10,6 +10,7 @@ from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
 from analytics import record_message, snapshot_members
 from commenter import extract_message_id, post_comment, remember_post
+from news_targets import active_news_channels
 
 
 CHECK_INTERVAL = 15
@@ -19,28 +20,7 @@ _LAST_SNAP = 0
 
 
 def get_all_channels():
-    users = load_users()
-    channels = []
-    for user_id, user_data in users.items():
-        if not isinstance(user_data, dict):
-            continue
-        for channel in user_data.get("channels", []):
-            if not isinstance(channel, dict):
-                continue
-            if channel.get("status") != "active" or not channel.get("id"):
-                continue
-            item = dict(channel)
-            item["user_id"] = user_id
-            item.setdefault("interval", 10)
-            item.setdefault("last_send", 0)
-            item.setdefault("categories", ["همه"])
-            item.setdefault("send_image", True)
-            item.setdefault("show_emoji", True)
-            item.setdefault("footer_text", "")
-            item.setdefault("comment_on", False)
-            item.setdefault("comment_text", "")
-            channels.append(item)
-    return channels
+    return active_news_channels()
 
 
 def needed_categories(channels):
