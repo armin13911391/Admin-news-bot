@@ -8,11 +8,13 @@ from sender import send_message, send_photo
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
+from analytics import record_message, snapshot_members
 
 
 CHECK_INTERVAL = 20
 _FORBIDDEN_UNTIL = {}
 _LAST_EMPTY = 0
+_LAST_SNAP = 0
 
 
 def get_all_channels():
@@ -88,7 +90,7 @@ def mark_forbidden(channel_id):
 
 
 def run():
-    global _LAST_EMPTY
+    global _LAST_EMPTY, _LAST_SNAP
     print("🚀 AutoNewsBot MultiChannel Started...")
     while True:
         try:
@@ -100,6 +102,14 @@ def run():
                     _LAST_EMPTY = now
                 time.sleep(CHECK_INTERVAL)
                 continue
+            now = time.time()
+            if now - _LAST_SNAP > 600:
+                for channel in channels:
+                    try:
+                        snapshot_members(channel["id"])
+                    except Exception:
+                        pass
+                _LAST_SNAP = now
             news_list = get_news(needed_categories(channels))
             if not news_list:
                 time.sleep(CHECK_INTERVAL)
@@ -139,6 +149,10 @@ def run():
                         break
                     mark_news_sent(channel["id"], link)
                     update_last_send(channel["user_id"], channel["id"], time.time())
+                    try:
+                        record_message(channel["id"])
+                    except Exception:
+                        pass
                     age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
                     print(
                         f"✅ ارسال شد به {channel['id']}\n"
