@@ -7,7 +7,7 @@ from keyboards import channel_pick_menu
 from states import set_state, get_state, clear_state
 from subscription import has_subscription
 from handlers.home import home_components, back_only
-from commenter import post_comment, remember_post
+from commenter import post_comment, remember_post, get_linked_chat
 
 PRESETS = [
     "به کامنت‌های یکدیگر احترام بگذارید",
@@ -27,21 +27,27 @@ def find_channel(user, channel_id):
     return None
 
 
-def find_live_channel(chat):
-    username = getattr(chat, "username", None)
-    chat_id = str(getattr(chat, "id", "") or "")
+def _keys_of_chat(obj):
     keys = set()
+    if not obj:
+        return keys
+    username = getattr(obj, "username", None)
+    chat_id = str(getattr(obj, "id", "") or getattr(obj, "chat_id", "") or "")
     if username:
         keys.add("@" + str(username).lstrip("@"))
-        keys.add(str(username).lstrip("@"))
+        keys.add(str(username).lstrip("@").lower())
     if chat_id:
         keys.add(chat_id)
+    return keys
+
+
+def find_live_channel_by_keys(keys):
     for user_id, user in load_users().items():
         if not isinstance(user, dict):
             continue
         for channel in user.get("channels") or []:
             cid = str(channel.get("id") or "")
-            if cid in keys or cid.lstrip("@") in keys:
+            if cid in keys or cid.lstrip("@").lower() in keys:
                 return str(user_id), channel
     return None, None
 
@@ -55,7 +61,8 @@ def comment_text_view(channel):
         "━━━━━━━━━━━━━━\n"
         f"وضعیت: {status}\n"
         f"متن: {text}\n\n"
-        "بعد از هر پست جدید کانال، همین متن می‌رود دیدگاه."
+        "متن فقط داخل دیدگاه نوشته می‌شود، نه داخل خود کانال.\n"
+        "ربات باید ادمین گروه دیدگاه هم باشد."
     )
 
 
@@ -151,28 +158,59 @@ async def on_callback(callback: CallbackQuery):
         if index < 0 or index >= len(PRESETS) or not channel_id:
             return
         channel = save_comment(user_id, channel_id, text=PRESETS[index], enabled=True)
-        await edit_message(callback, "✅ متن ذخیره شد و کامنت روشن شد.\n\n" + comment_text_view(channel or {"id": channel_id, "comment_on": True, "comment_text": PRESETS[index]}), comment_menu(channel or {"id": channel_id, "comment_on": True, "comment_text": PRESETS[index]}))
+        view = channel or {"id": channel_id, "comment_on": True, "comment_text": PRESETS[index]}
+        await edit_message(callback, "✅ متن ذخیره شد و کامنت روشن شد.\n\n" + comment_text_view(view), comment_menu(view))
         return
+
+
+def _handle_discussion_or_channel(message):
+    chat = getattr(message, "chat", None)
+    if not chat:
+        return False
+    chat_type = str(getattr(chat, "type", "") or "")
+    incoming = (message.content or "").strip()
+    mid = getattr(message, "message_id", None) or getattr(message, "id", None)
+
+    if chat_type == "channel":
+        owner_id, channel = find_live_channel_by_keys(_keys_of_chat(chat))
+        if not channel or not channel.get("comment_on"):
+            return True
+        text = (channel.get("comment_text") or "").strip()
+        if not text or incoming == text:
+            return True
+        remember_post(owner_id, channel.get("id"), mid)
+        print(f"💬 پست کانال {channel.get('id')} — ارسال فقط به گروه دیدگاه")
+        post_comment(channel.get("id"), text, reply_to=mid)
+        return True
+
+    if chat_type in ("group", "supergroup"):
+        source = getattr(message, "forward_from_chat", None) or getattr(message, "sender_chat", None)
+        owner_id, channel = find_live_channel_by_keys(_keys_of_chat(source))
+        if not channel:
+            group_id = getattr(chat, "id", None)
+            for user_id, user in load_users().items():
+                if not isinstance(user, dict):
+                    continue
+                for item in user.get("channels") or []:
+                    linked = get_linked_chat(item.get("id"))
+                    if linked and str(linked) == str(group_id):
+                        owner_id, channel = str(user_id), item
+                        break
+        if not channel or not channel.get("comment_on"):
+            return True
+        text = (channel.get("comment_text") or "").strip()
+        if not text or incoming == text:
+            return True
+        print(f"💬 نسخه پست در گروه دیدگاه {getattr(chat, 'id', '')}")
+        post_comment(channel.get("id"), text, group_message_id=mid, group_id=getattr(chat, "id", None))
+        return True
+    return False
 
 
 @bot.event
 async def on_message(message: Message):
-    chat = getattr(message, "chat", None)
-    chat_type = getattr(chat, "type", None) if chat else None
-    if chat_type == "channel":
-        owner_id, channel = find_live_channel(chat)
-        if not channel or not channel.get("comment_on"):
-            return
-        text = (channel.get("comment_text") or "").strip()
-        incoming = (message.content or "").strip()
-        if not text or incoming == text:
-            return
-        mid = getattr(message, "message_id", None) or getattr(message, "id", None)
-        remember_post(owner_id, channel.get("id"), mid)
-        print(f"💬 پست کانال {channel.get('id')} دیده شد — کامنت می‌رود")
-        post_comment(channel.get("id"), text, mid)
+    if _handle_discussion_or_channel(message):
         return
-
     if message.from_user is None:
         return
     user_id = message.from_user.id
@@ -185,4 +223,5 @@ async def on_message(message: Message):
         return
     channel = save_comment(user_id, channel_id, text=text, enabled=True)
     clear_state(user_id)
-    await message.reply("✅ متن کامنت ذخیره شد و فعال شد.\n\n" + comment_text_view(channel or {"id": channel_id, "comment_on": True, "comment_text": text}), components=comment_menu(channel or {"id": channel_id, "comment_on": True, "comment_text": text}))
+    view = channel or {"id": channel_id, "comment_on": True, "comment_text": text}
+    await message.reply("✅ متن کامنت ذخیره شد و فعال شد.\n\n" + comment_text_view(view), components=comment_menu(view))
