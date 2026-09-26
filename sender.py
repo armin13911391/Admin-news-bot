@@ -9,7 +9,7 @@ BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 
 def _parse_response(response):
     if response is None:
-        return {"ok": False, "code": 0, "forbidden": False}
+        return {"ok": False, "code": 0, "forbidden": False, "message_id": None}
     code = response.status_code
     try:
         payload = response.json()
@@ -18,7 +18,17 @@ def _parse_response(response):
     api_ok = bool(payload.get("ok")) and code == 200
     description = str(payload.get("description", ""))
     forbidden = code == 403 or "permission_denied" in description or "Forbidden" in description
-    return {"ok": api_ok, "code": code, "forbidden": forbidden, "description": description}
+    result_body = payload.get("result")
+    message_id = None
+    if isinstance(result_body, dict):
+        message_id = result_body.get("message_id")
+    return {
+        "ok": api_ok,
+        "code": code,
+        "forbidden": forbidden,
+        "description": description,
+        "message_id": message_id,
+    }
 
 
 def inline_keyboard(rows):
@@ -30,19 +40,21 @@ def inline_keyboard(rows):
     }
 
 
-def send_message(channel_id, text, reply_markup=None):
+def send_message(channel_id, text, reply_markup=None, reply_to_message_id=None):
     try:
         payload = {"chat_id": channel_id, "text": text}
         if reply_markup:
             payload["reply_markup"] = reply_markup
+        if reply_to_message_id:
+            payload["reply_to_message_id"] = reply_to_message_id
         response = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=12)
         result = _parse_response(response)
-        if not result["ok"]:
+        if not result["ok"] and not reply_to_message_id:
             print(f"❌ خطا در ارسال متن به {channel_id}: {result['code']} {result.get('description', '')[:160]}")
         return result
     except requests.RequestException as error:
         print(f"❌ خطای شبکه در ارسال متن به {channel_id}:", error)
-        return {"ok": False, "code": 0, "forbidden": False}
+        return {"ok": False, "code": 0, "forbidden": False, "message_id": None}
 
 
 def send_photo(channel_id, photo, caption, reply_markup=None):
@@ -61,6 +73,12 @@ def send_photo(channel_id, photo, caption, reply_markup=None):
         return send_message(channel_id, caption, reply_markup)
     except requests.RequestException:
         return send_message(channel_id, caption, reply_markup)
+
+
+def send_comment(channel_id, text, reply_to_message_id):
+    if not text or not reply_to_message_id:
+        return {"ok": False}
+    return send_message(channel_id, text, reply_to_message_id=reply_to_message_id)
 
 
 def send_photo_file(chat_id, path, caption="", reply_markup=None):

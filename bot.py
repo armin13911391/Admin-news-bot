@@ -4,6 +4,7 @@ import handlers.start
 import handlers.home
 import handlers.shop
 import handlers.stats
+import handlers.comments
 import handlers.profile
 import handlers.navigation
 import handlers.channel
