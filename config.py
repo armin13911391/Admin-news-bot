@@ -1,5 +1,5 @@
 # ==========================
-# AutoNewsBot Config v2.1
+# AutoNewsBot Config v2.2
 # ==========================
 
 import os
@@ -17,38 +17,39 @@ CHECK_EMPTY_INTERVAL = 60
 SEND_INTERVALS = [300, 600]
 MAX_CHANNELS = 3
 RSS_CACHE_SECONDS = 45
+FORBIDDEN_COOLDOWN = 1800
 
 CATEGORY_FEEDS = {
     "ورزش": [
-        "https://www.varzesh3.com/rss",
-        "https://www.khabarvarzeshi.com/rss",
         "https://www.mehrnews.com/rss/tp/9",
         "https://www.isna.ir/rss/tp/24",
+        "https://www.isna.ir/rss/tp/119",
+        "https://www.khabarvarzeshi.com/rss",
     ],
     "جنگ": [
         "https://defapress.ir/fa/rss",
-        "https://nournews.ir/fa/rss",
         "https://www.mehrnews.com/rss/tp/39",
         "https://www.isna.ir/rss/tp/407",
         "https://www.irna.ir/rss/tp/9",
     ],
     "آب‌وهوا": [
         "https://www.isna.ir/rss/tp/62",
-        "https://www.irna.ir/rss/tp/32",
+        "https://www.isna.ir/rss/tp/9",
     ],
     "اقتصاد": [
-        "https://www.tgju.org/rss",
-        "https://www.eghtesadnews.com/rss",
         "https://www.mehrnews.com/rss/tp/20",
         "https://www.irna.ir/rss/tp/20",
+        "https://www.isna.ir/rss/tp/34",
+        "https://www.sena.ir/rss",
     ],
     "فناوری": [
         "https://www.zoomit.ir/feed/",
         "https://www.isna.ir/rss/tp/41",
+        "https://www.isna.ir/rss/tp/535",
     ],
     "سیاسی": [
         "https://www.mehrnews.com/rss/tp/7",
-        "https://www.isna.ir/rss/tp/152",
+        "https://www.isna.ir/rss/tp/14",
         "https://www.irna.ir/rss/tp/5",
     ],
 }
@@ -61,32 +62,32 @@ for _feeds in CATEGORY_FEEDS.values():
 
 CATEGORY_RULES = {
     "ورزش": {
-        "sources": ["varzesh3", "khabarvarzeshi", "rss/tp/9", "rss/tp/24"],
+        "sources": ["khabarvarzeshi", "rss/tp/9", "rss/tp/24", "rss/tp/119"],
         "keywords": ["فوتبال", "والیبال", "بسکتبال", "لیگ برتر", "لیگ", "جام جهانی", "بازیکن", "مربی", "قهرمانی", "استقلال", "پرسپولیس", "ورزش", "تیم ملی", "داور"],
         "negative": ["موشک", "پهپاد", "هواشناسی", "بارش باران"],
     },
     "اقتصاد": {
-        "sources": ["tgju", "eghtesadnews", "rss/tp/20"],
+        "sources": ["sena.ir", "rss/tp/20", "rss/tp/34"],
         "keywords": ["دلار", "طلا", "سکه", "بورس", "ارز", "اقتصاد", "تورم", "نرخ ارز", "بانک مرکزی", "نفت"],
         "negative": ["فوتبال", "هواشناسی", "جنگنده"],
     },
     "جنگ": {
-        "sources": ["defapress", "nournews", "rss/tp/39", "rss/tp/407", "rss/tp/9"],
+        "sources": ["defapress", "rss/tp/39", "rss/tp/407", "rss/tp/9"],
         "keywords": ["حمله نظامی", "حمله موشکی", "موشک", "پهپاد", "ارتش", "عملیات نظامی", "درگیری مسلحانه", "جنگنده", "تجاوز نظامی", "شهادت", "بمباران"],
         "negative": ["هواشناسی", "بارش", "فوتبال", "لیگ برتر"],
     },
     "فناوری": {
-        "sources": ["zoomit", "rss/tp/41"],
+        "sources": ["zoomit", "rss/tp/41", "rss/tp/535"],
         "keywords": ["گوشی", "موبایل", "لپ تاپ", "هوش مصنوعی", "تکنولوژی", "اینترنت", "نرم افزار", "اپلیکیشن", "استارتاپ"],
         "negative": ["موشک", "فوتبال"],
     },
     "سیاسی": {
-        "sources": ["rss/tp/7", "rss/tp/152", "rss/tp/5"],
+        "sources": ["rss/tp/7", "rss/tp/14", "rss/tp/5"],
         "keywords": ["مجلس", "دولت", "وزیر", "هیئت دولت", "رئیس جمهور", "رئیس‌جمهور", "انتخابات", "نماینده مجلس", "سیاست خارجی", "مصوبه", "لایحه"],
         "negative": ["فوتبال", "هواشناسی", "موشک"],
     },
     "آب‌وهوا": {
-        "sources": ["irimo", "rss/tp/62", "rss/tp/32"],
+        "sources": ["irimo", "rss/tp/62", "rss/tp/9"],
         "keywords": ["هواشناسی", "پیش بینی هوا", "پیش‌بینی هوا", "وضعیت هوا", "بارش باران", "بارش برف", "سامانه بارشی", "هشدار هواشناسی", "هشدار زرد", "هشدار نارنجی", "هشدار قرمز", "وزش باد شدید", "کاهش دما", "افزایش دما", "گرد و غبار", "آلودگی هوا", "رگبار", "تگرگ", "طوفان", "سیلاب"],
         "negative": ["موشک", "پهپاد", "فوتبال", "دلار", "بورس"],
         "require_iran": True,
