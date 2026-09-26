@@ -1,25 +1,16 @@
-# ==========================
-# Admin Panel
-# Version 1.0.0
-# ==========================
-
 from bale import Message
 
 from client import bot
-from keyboards import admin_menu
+from admin_store import is_admin
+from handlers.admin_panel import admin_menu
 
 
 @bot.event
 async def on_message(message: Message):
-
     if message.from_user is None:
         return
-
-    if message.content != "🛠 پنل مدیریت":
+    if (message.content or "").strip() != "🛠 پنل مدیریت":
         return
-
-    await message.reply(
-        "🛠 پنل مدیریت\n\n"
-        "لطفاً یکی از گزینه‌های زیر را انتخاب کنید.",
-        components=admin_menu()
-    )	
+    if not is_admin(message.from_user.id):
+        return
+    await message.reply("🛠 پنل مدیریت\n\nیک گزینه را انتخاب کن.", components=admin_menu())
