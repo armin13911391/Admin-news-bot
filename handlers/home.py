@@ -1,4 +1,4 @@
-from bale import CallbackQuery, Message
+from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from client import bot
 from ui import edit_message
@@ -19,7 +19,6 @@ from subscription import (
 )
 from force_join import is_force_join_enabled, is_user_joined
 from force_join_keyboard import force_join_keyboard
-from bale import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def back_only():
@@ -139,8 +138,7 @@ async def on_callback(callback: CallbackQuery):
         set_state(user_id, "add_channel", {})
         await edit_message(
             callback,
-            "➕ آیدی کانال را بفرست.\n\nمثال:
-@mychannel\n\nربات باید در کانال ادمین باشد.",
+            "➕ آیدی کانال را بفرست.\n\nمثال: @mychannel\n\nربات باید در کانال ادمین باشد.",
             back_only(),
         )
         return
