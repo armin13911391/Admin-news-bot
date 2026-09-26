@@ -1,12 +1,14 @@
 import os
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 
 def render_stats_image(report, out_path):
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return None
+
     hours = report["hours"]
     values = report["hourly"]
     now = report["now"]
@@ -19,17 +21,8 @@ def render_stats_image(report, out_path):
         ax.set_facecolor("#111827")
 
     axes[0].axis("off")
-    title = str(report["channel_id"])
-    clock = now.strftime("%H:%M")
-    axes[0].text(0.02, 0.82, title, color="#f8fafc", fontsize=20, fontweight="bold", transform=axes[0].transAxes)
-    axes[0].text(
-        0.02,
-        0.52,
-        f"00:00  →  {clock}",
-        color="#93c5fd",
-        fontsize=13,
-        transform=axes[0].transAxes,
-    )
+    axes[0].text(0.02, 0.82, str(report["channel_id"]), color="#f8fafc", fontsize=20, fontweight="bold", transform=axes[0].transAxes)
+    axes[0].text(0.02, 0.52, f"00:00  ->  {now.strftime('%H:%M')}", color="#93c5fd", fontsize=13, transform=axes[0].transAxes)
     cards = [
         ("Today", report["users_today"]),
         ("7 days", report["users_7"]),
@@ -50,22 +43,35 @@ def render_stats_image(report, out_path):
     for spine in axes[1].spines.values():
         spine.set_color("#334155")
     axes[1].grid(axis="y", color="#1e293b", linestyle="--", alpha=0.7)
-    if values:
-        ymax = max(values) if max(values) > 0 else 1
-        axes[1].set_ylim(0, ymax * 1.25)
+    ymax = max(values) if values and max(values) > 0 else 1
+    axes[1].set_ylim(0, ymax * 1.25)
     for bar, value in zip(bars, values):
         if value:
-            axes[1].text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.05,
-                str(value),
-                ha="center",
-                va="bottom",
-                color="#e2e8f0",
-                fontsize=8,
-            )
+            axes[1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05, str(value), ha="center", va="bottom", color="#e2e8f0", fontsize=8)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, facecolor=fig.get_facecolor())
     plt.close(fig)
     return out_path
+
+
+def render_stats_text(report):
+    now = report["now"]
+    clock = now.strftime("%H:%M")
+    lines = [
+        f"📊 آمار {report['channel_id']}",
+        f"⏰ از ۰۰:۰۰ تا {clock}",
+        "",
+        f"👥 کاربرای امروز: {report['users_today']}",
+        f"📅 ۷ روز ۳۰ روز: {report['users_7']} / {report['users_30']}",
+        f"📢 کل اعضا: {report['members']}",
+        f"💬 پیام‌های امروز: {report['messages_today']}",
+        "",
+        "📈 پیام هر ساعت:",
+    ]
+    max_value = max(report["hourly"] or [0]) or 1
+    for hour, value in zip(report["hours"], report["hourly"]):
+        blocks = int(round((value / max_value) * 10)) if value else 0
+        bar = "█" * blocks or "·"
+        lines.append(f"{hour:02d}:00  {bar}  {value}")
+    return "\n".join(lines)
